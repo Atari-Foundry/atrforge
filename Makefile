@@ -536,19 +536,35 @@ github-release:
 		echo ""; \
 		echo "Step 2: Pushing to remote..."; \
 		if git rev-parse --verify origin/$$CURRENT_BRANCH >/dev/null 2>&1; then \
-			git push origin $$CURRENT_BRANCH || { \
-				echo "  ⚠ Failed to push to origin/$$CURRENT_BRANCH"; \
+			echo "  Pushing to origin/$$CURRENT_BRANCH (timeout: 60s)..."; \
+			if timeout 60 git push origin $$CURRENT_BRANCH 2>&1; then \
+				echo "  ✓ Pushed to origin/$$CURRENT_BRANCH"; \
+			else \
+				PUSH_CODE=$$?; \
+				if [ $$PUSH_CODE -eq 124 ]; then \
+					echo "  ⚠ Push timed out after 60 seconds"; \
+					echo "     This may indicate network issues"; \
+				else \
+					echo "  ⚠ Failed to push to origin/$$CURRENT_BRANCH (exit code: $$PUSH_CODE)"; \
+				fi; \
 				echo "     You may need to push manually: git push origin $$CURRENT_BRANCH"; \
 				echo "     Continuing anyway (automation mode)..."; \
-			}; \
+			fi; \
 		else \
-			echo "  Creating and pushing branch $$CURRENT_BRANCH..."; \
-			git push -u origin $$CURRENT_BRANCH || { \
-				echo "  ⚠ Failed to push branch"; \
+			echo "  Creating and pushing branch $$CURRENT_BRANCH (timeout: 60s)..."; \
+			if timeout 60 git push -u origin $$CURRENT_BRANCH 2>&1; then \
+				echo "  ✓ Pushed to origin/$$CURRENT_BRANCH"; \
+			else \
+				PUSH_CODE=$$?; \
+				if [ $$PUSH_CODE -eq 124 ]; then \
+					echo "  ✗ Push timed out after 60 seconds"; \
+					echo "     Please push manually: git push -u origin $$CURRENT_BRANCH"; \
+				else \
+					echo "  ✗ Failed to push branch (exit code: $$PUSH_CODE)"; \
+				fi; \
 				exit 1; \
-			}; \
+			fi; \
 		fi; \
-		echo "  ✓ Pushed to origin/$$CURRENT_BRANCH"; \
 		echo ""; \
 		if [ "$$CURRENT_BRANCH" != "develop" ]; then \
 			echo "Step 3: Switching to develop branch..."; \
@@ -758,15 +774,22 @@ github-release-build:
 		echo "  ✓ Tag created locally"; \
 	fi; \
 	if [ "$$TAG_EXISTS_REMOTE" = "no" ]; then \
-		echo "  Pushing tag to remote..."; \
-		git push origin "$$VERSION" || { \
-			echo "  ✗ Failed to push tag to remote"; \
-			echo "     Tag exists locally but not on remote."; \
-			echo "     Please push manually: git push origin $$VERSION"; \
-			echo "     Or delete local tag and retry: git tag -d $$VERSION"; \
+		echo "  Pushing tag to remote (timeout: 60s)..."; \
+		if timeout 60 git push origin "$$VERSION" 2>&1; then \
+			echo "  ✓ Tag pushed to remote"; \
+		else \
+			PUSH_CODE=$$?; \
+			if [ $$PUSH_CODE -eq 124 ]; then \
+				echo "  ✗ Push timed out after 60 seconds"; \
+				echo "     Please push manually: git push origin $$VERSION"; \
+			else \
+				echo "  ✗ Failed to push tag to remote (exit code: $$PUSH_CODE)"; \
+				echo "     Tag exists locally but not on remote."; \
+				echo "     Please push manually: git push origin $$VERSION"; \
+				echo "     Or delete local tag and retry: git tag -d $$VERSION"; \
+			fi; \
 			exit 1; \
-		}; \
-		echo "  ✓ Tag pushed to remote"; \
+		fi; \
 	elif [ "$$TAG_EXISTS_LOCAL" = "yes" ]; then \
 		echo "  ✓ Tag $$VERSION already exists on remote"; \
 	fi; \
