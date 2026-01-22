@@ -483,6 +483,7 @@ github-release:
 			else \
 				echo "  Auto-committing changes for automation..."; \
 				COMMIT_MSG="Prepare release: $$(date '+%Y-%m-%d %H:%M:%S')"; \
+<<<<<<< HEAD
 				if [ "$$VERBOSE" = "1" ]; then \
 					echo "  [VERBOSE] Auto-committing for automation"; \
 					echo "  [VERBOSE] Commit message: $$COMMIT_MSG"; \
@@ -495,6 +496,11 @@ github-release:
 					if [ "$$VERBOSE" = "1" ]; then \
 						echo "  [VERBOSE] git commit failed, exit code: $$?"; \
 					fi; \
+=======
+				git add -A; \
+				git commit -m "$$COMMIT_MSG" || { \
+					echo "  ⚠ Failed to commit changes"; \
+>>>>>>> develop
 					exit 1; \
 				}; \
 				echo "  ✓ Changes committed"; \
@@ -517,6 +523,7 @@ github-release:
 			PUSH_CODE=$$?; \
 			if [ $$PUSH_CODE -ne 0 ]; then \
 				echo "  ⚠ Failed to push to origin/$$CURRENT_BRANCH"; \
+<<<<<<< HEAD
 				if [ "$$VERBOSE" = "1" ]; then \
 					echo "  [VERBOSE] git push exit code: $$PUSH_CODE"; \
 					echo "  [VERBOSE] git push output:"; \
@@ -533,6 +540,11 @@ github-release:
 					fi; \
 				fi; \
 			fi; \
+=======
+				echo "     You may need to push manually: git push origin $$CURRENT_BRANCH"; \
+				echo "     Continuing anyway (automation mode)..."; \
+			}; \
+>>>>>>> develop
 		else \
 			echo "  Creating and pushing branch $$CURRENT_BRANCH..."; \
 			if [ "$$VERBOSE" = "1" ]; then \
@@ -561,6 +573,7 @@ github-release:
 		fi; \
 		echo "  ✓ Pushed to origin/$$CURRENT_BRANCH"; \
 		echo ""; \
+<<<<<<< HEAD
 		if [ "$$CURRENT_BRANCH" != "develop" ]; then \
 			echo "Step 3: Switching to develop branch..."; \
 			git fetch origin develop:develop 2>/dev/null || true; \
@@ -619,6 +632,60 @@ github-release:
 					echo "  [VERBOSE] git pull output:"; \
 					echo "$$PULL_OUTPUT" | sed 's/^/    /'; \
 				fi; \
+=======
+		if [ "$$CURRENT_BRANCH" = "develop" ]; then \
+			echo "Step 3: Merging to main..."; \
+			echo "  Checking if auto-merge workflow is available..."; \
+			CI_RUN_ID=$$(gh run list --workflow=ci.yml --branch=develop --limit=1 --json databaseId,status,conclusion -q '.[0].databaseId' 2>/dev/null); \
+			if [ -n "$$CI_RUN_ID" ]; then \
+				echo "  Waiting for CI to complete..."; \
+					gh run watch $$CI_RUN_ID --exit-status || { \
+					echo "  ⚠ CI failed. Continuing with merge anyway (automation mode)..."; \
+				}; \
+			fi; \
+			echo "  Merging develop to main..."; \
+			git fetch origin main:main 2>/dev/null || true; \
+			git checkout main 2>/dev/null || { \
+				echo "  ⚠ Failed to checkout main. Creating from develop..."; \
+				git checkout -b main; \
+			}; \
+			timeout 10 git pull origin main 2>/dev/null || true; \
+			git merge develop --no-edit -m "Merge develop to main for release [skip ci]" || { \
+				echo "  ⚠ Merge conflict detected. Please resolve manually:"; \
+				echo "     git checkout main"; \
+				echo "     git merge develop"; \
+				echo "     # Resolve conflicts, then:"; \
+				echo "     git commit"; \
+				echo "     git push origin main"; \
+				echo "     make github-release SKIP_GIT=1"; \
+				exit 1; \
+			}; \
+			git push origin main || { \
+				echo "  ⚠ Failed to push to main. Please push manually:"; \
+				echo "     git push origin main"; \
+				echo "     Continuing with release anyway (automation mode)..."; \
+			}; \
+			echo "  ✓ Merged to main and pushed"; \
+		elif [ "$$CURRENT_BRANCH" != "main" ]; then \
+			echo "Step 3: Switching to main branch..."; \
+			git fetch origin main:main 2>/dev/null || true; \
+			git checkout main 2>/dev/null || { \
+				echo "  ⚠ main branch not found locally or remotely"; \
+				exit 1; \
+			}; \
+			if timeout 10 git pull origin main 2>/dev/null; then \
+				echo "  ✓ Switched to main branch"; \
+			else \
+				echo "  ⚠ Failed to pull latest main (timeout or network issue)"; \
+				echo "     Continuing with release anyway..."; \
+			fi; \
+		else \
+			echo "Step 3: Already on main branch, pulling latest..."; \
+			if timeout 10 git pull origin main 2>/dev/null; then \
+				echo "  ✓ Main branch up to date"; \
+			else \
+				echo "  ⚠ Failed to pull latest main (timeout or network issue)"; \
+>>>>>>> develop
 				echo "     Continuing with release anyway..."; \
 			fi; \
 		fi; \
