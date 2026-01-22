@@ -794,7 +794,7 @@ github-release-build:
 		echo "  ✓ Tag $$VERSION already exists on remote"; \
 	fi; \
 	echo ""; \
-	echo "Renaming release files to include version..."; \
+	echo "Collecting release files..."; \
 	VERSION_NUM=$$(echo "$$VERSION" | sed 's/^v//'); \
 	RELEASE_FILES=""; \
 	for prog in $(PROGS); do \
@@ -804,15 +804,23 @@ github-release-build:
 			else \
 				EXT=""; \
 			fi; \
-			if [ -f "$(RELEASE_DIR)/$$prog-$$platform$$EXT" ]; then \
-				mv "$(RELEASE_DIR)/$$prog-$$platform$$EXT" "$(RELEASE_DIR)/$$prog-$$VERSION_NUM-$$platform$$EXT" && \
+			VERSIONED_FILE="$(RELEASE_DIR)/$$prog-$$VERSION_NUM-$$platform$$EXT"; \
+			UNVERSIONED_FILE="$(RELEASE_DIR)/$$prog-$$platform$$EXT"; \
+			if [ -f "$$VERSIONED_FILE" ]; then \
+				echo "  ✓ Found versioned file: $$prog-$$VERSION_NUM-$$platform$$EXT"; \
+				RELEASE_FILES="$$RELEASE_FILES $$VERSIONED_FILE"; \
+			elif [ -f "$$UNVERSIONED_FILE" ]; then \
+				echo "  Renaming: $$prog-$$platform$$EXT -> $$prog-$$VERSION_NUM-$$platform$$EXT"; \
+				mv "$$UNVERSIONED_FILE" "$$VERSIONED_FILE" && \
 				echo "  ✓ $$prog-$$VERSION_NUM-$$platform$$EXT"; \
-				RELEASE_FILES="$$RELEASE_FILES $(RELEASE_DIR)/$$prog-$$VERSION_NUM-$$platform$$EXT"; \
+				RELEASE_FILES="$$RELEASE_FILES $$VERSIONED_FILE"; \
 			fi; \
 		done; \
 	done; \
 	if [ -z "$$RELEASE_FILES" ]; then \
 		echo "  ✗ No release files found to upload"; \
+		echo "  Expected files in $(RELEASE_DIR)/ with pattern: <program>-<version>-<platform>"; \
+		echo "  Or unversioned pattern: <program>-<platform>"; \
 		exit 1; \
 	fi; \
 	echo ""; \
