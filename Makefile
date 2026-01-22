@@ -473,61 +473,64 @@ github-release:
 		fi; \
 		echo "  ✓ Pushed to origin/$$CURRENT_BRANCH"; \
 		echo ""; \
-		if [ "$$CURRENT_BRANCH" = "develop" ]; then \
-			echo "Step 3: Merging to main..."; \
-			echo "  Checking if auto-merge workflow is available..."; \
-			CI_RUN_ID=$$(gh run list --workflow=ci.yml --branch=develop --limit=1 --json databaseId,status,conclusion -q '.[0].databaseId' 2>/dev/null); \
-			if [ -n "$$CI_RUN_ID" ]; then \
-				echo "  Waiting for CI to complete..."; \
-					gh run watch $$CI_RUN_ID --exit-status || { \
-					echo "  ⚠ CI failed. Continuing with merge anyway (automation mode)..."; \
+		if [ "$$CURRENT_BRANCH" != "develop" ]; then \
+			echo "Step 3: Switching to develop branch..."; \
+			git fetch origin develop:develop 2>/dev/null || true; \
+			git checkout develop 2>/dev/null || { \
+				echo "  ⚠ develop branch not found locally or remotely"; \
+				echo "     Creating develop branch from current branch..."; \
+				git checkout -b develop; \
+				git push -u origin develop || { \
+					echo "  ⚠ Failed to push develop branch"; \
+					exit 1; \
 				}; \
-			fi; \
-			echo "  Merging develop to main..."; \
-			git fetch origin main:main 2>/dev/null || true; \
-			git checkout main 2>/dev/null || { \
-				echo "  ⚠ Failed to checkout main. Creating from develop..."; \
-				git checkout -b main; \
 			}; \
-			timeout 10 git pull origin main 2>/dev/null || true; \
-			git merge develop --no-edit -m "Merge develop to main for release [skip ci]" || { \
-				echo "  ⚠ Merge conflict detected. Please resolve manually:"; \
-				echo "     git checkout main"; \
-				echo "     git merge develop"; \
-				echo "     # Resolve conflicts, then:"; \
-				echo "     git commit"; \
-				echo "     git push origin main"; \
-				echo "     make github-release SKIP_GIT=1"; \
-				exit 1; \
-			}; \
-			git push origin main || { \
-				echo "  ⚠ Failed to push to main. Please push manually:"; \
-				echo "     git push origin main"; \
-				echo "     Continuing with release anyway (automation mode)..."; \
-			}; \
-			echo "  ✓ Merged to main and pushed"; \
-		elif [ "$$CURRENT_BRANCH" != "main" ]; then \
-			echo "Step 3: Switching to main branch..."; \
-			git fetch origin main:main 2>/dev/null || true; \
-			git checkout main 2>/dev/null || { \
-				echo "  ⚠ main branch not found locally or remotely"; \
-				exit 1; \
-			}; \
-			if timeout 10 git pull origin main 2>/dev/null; then \
-				echo "  ✓ Switched to main branch"; \
+			if timeout 10 git pull origin develop 2>/dev/null; then \
+				echo "  ✓ Switched to develop branch"; \
 			else \
-				echo "  ⚠ Failed to pull latest main (timeout or network issue)"; \
-				echo "     Continuing with release anyway..."; \
+				echo "  ⚠ Failed to pull latest develop (timeout or network issue)"; \
+				echo "     Continuing anyway..."; \
 			fi; \
 		else \
-			echo "Step 3: Already on main branch, pulling latest..."; \
-			if timeout 10 git pull origin main 2>/dev/null; then \
-				echo "  ✓ Main branch up to date"; \
+			echo "Step 3: Already on develop branch, pulling latest..."; \
+			if timeout 10 git pull origin develop 2>/dev/null; then \
+				echo "  ✓ Develop branch up to date"; \
 			else \
-				echo "  ⚠ Failed to pull latest main (timeout or network issue)"; \
-				echo "     Continuing with release anyway..."; \
+				echo "  ⚠ Failed to pull latest develop (timeout or network issue)"; \
+				echo "     Continuing anyway..."; \
 			fi; \
 		fi; \
+		echo ""; \
+		echo "Step 4: Waiting for CI to pass..."; \
+		if ! command -v gh >/dev/null 2>&1; then \
+			echo "  ✗ GitHub CLI (gh) not found. Please install it:"; \
+			echo "     https://cli.github.com/"; \
+			exit 1; \
+		fi; \
+		if ! gh auth status >/dev/null 2>&1; then \
+			echo "  ✗ Not authenticated with GitHub. Please run: gh auth login"; \
+			exit 1; \
+		fi; \
+		echo "  ✓ GitHub CLI found and authenticated"; \
+		echo "  Waiting for CI workflow to complete on develop branch..."; \
+		CI_RUN_ID=$$(gh run list --workflow=ci.yml --branch=develop --limit=1 --json databaseId,status,conclusion -q '.[0].databaseId' 2>/dev/null); \
+		if [ -z "$$CI_RUN_ID" ]; then \
+			echo "  ⚠ No CI run found. Waiting for CI to start..."; \
+			sleep 5; \
+			CI_RUN_ID=$$(gh run list --workflow=ci.yml --branch=develop --limit=1 --json databaseId,status,conclusion -q '.[0].databaseId' 2>/dev/null); \
+			if [ -z "$$CI_RUN_ID" ]; then \
+				echo "  ✗ Could not find CI run. Please check GitHub Actions manually."; \
+				exit 1; \
+			fi; \
+		fi; \
+		echo "  Watching CI run: $$CI_RUN_ID"; \
+		gh run watch $$CI_RUN_ID --exit-status || { \
+			echo ""; \
+			echo "  ✗ CI failed. Please fix the issues and try again."; \
+			echo "     View CI run: gh run view $$CI_RUN_ID"; \
+			exit 1; \
+		}; \
+		echo "  ✓ CI passed"; \
 		echo ""; \
 		echo "=== Git operations complete ==="; \
 		echo ""; \

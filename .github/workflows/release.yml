@@ -1,10 +1,8 @@
 name: Release
 
 # This workflow is disabled - releases are created locally using 'make github-release'
+# The workflow: make github-release pushes to develop, waits for CI, then builds locally and creates releases
 # See CONTRIBUTING.md and Makefile for release instructions
-#
-# To enable automated releases, uncomment and customize the jobs below.
-# Otherwise, releases are created locally using: make github-release
 
 on:
   workflow_dispatch:
@@ -25,29 +23,10 @@ jobs:
         echo ""
         echo "Releases are created locally using: make github-release"
         echo ""
-        echo "To create a release:"
-        echo "  1. Build all platforms: make release"
-        echo "  2. Create GitHub release: make github-release [VERSION=v1.2.3]"
+        echo "The release process:"
+        echo "  1. make github-release pushes to develop branch"
+        echo "  2. Waits for CI to pass on develop"
+        echo "  3. Builds all platforms locally"
+        echo "  4. Creates GitHub release locally"
         echo ""
         echo "See CONTRIBUTING.md for more information."
-
-# Uncomment below to enable automated releases:
-#
-# jobs:
-#   release:
-#     name: Create Release
-#     runs-on: ubuntu-latest
-#     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-#     steps:
-#     - name: Checkout code
-#       uses: actions/checkout@v4
-#     
-#     - name: Build releases
-#       run: make release
-#     
-#     - name: Create GitHub Release
-#       uses: softprops/action-gh-release@v1
-#       with:
-#         files: release/*
-#       env:
-#         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
