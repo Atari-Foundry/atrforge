@@ -1,0 +1,77 @@
+# Build artifacts
+obj/
+bin/
+release/
+build-*/
+obj-*/
+build-*-*/
+
+# BUILD_TEMPLATE directory (template files, not for production)
+BUILD_TEMPLATE/
+
+# Generated files
+src/version.h
+
+# macOS SDK files (if using macOS cross-compilation)
+MacOSX.sdk.tar.xz
+MacOSX*.sdk.tar.xz
+*.sdk.tar.xz
+
+# macOS cross-compilation tools
+MACOS_XCOMP/
+
+# Editor directories
+.cursor/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+*.orig
+VERSION.tmp
+
+# Release tracking
+.last-changelog.md
+release/notes.md
+release/current-unreleased.md
+
+# Legacy build artifacts (kept for compatibility)
+mkatr
+lsatr
+
+# Version stamp files
+**/.version-incremented
+
+# Docker build artifacts
+*.dockerignore
+Dockerfile.*.tmp
+
+# Test artifacts (if any)
+test-*/
+*.test
+
+# Coverage reports (if any)
+*.gcov
+*.gcda
+*.gcno
+coverage/
+
+# Profiling data
+*.prof
+gmon.out
+
+# Core dumps
+core
+core.*
+*.core
+
+test

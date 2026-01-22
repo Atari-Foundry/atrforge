@@ -1,0 +1,176 @@
+# CI/CD Setup
+
+This document describes the automated CI/CD pipeline for atrforge.
+
+## Overview
+
+The project uses GitHub Actions for continuous integration. Releases are created locally. The workflow is:
+
+1. **Build & Test** - On every push/PR, build and test on multiple platforms
+2. **Auto-Merge** - (Optional) Automatically merge to main after successful build
+3. **Release** - Created locally using `make github-release` (see [CONTRIBUTING.md](CONTRIBUTING.md))
+
+## Workflows
+
+### CI Workflow (`ci.yml`)
+
+**Triggers:**
+- Push to `main` or `develop` branches
+- Pull requests to `main` or `develop`
+
+**Actions:**
+- Builds on Linux with GCC and Clang
+- Verifies all 4 programs build successfully (atrforge, lsatr, convertatr, atrcp)
+- Runs test suite (`make test`) if configured
+- Verifies executables work
+
+**Status:** Build status is shown on PRs and commits.
+
+### Release Process
+
+**Status:** ⚠️ Releases are created **locally**, not in CI
+
+**Process:**
+1. Build all platforms: `make release`
+2. Create GitHub release: `make github-release [VERSION=v1.2.3]`
+
+**The `make github-release` command:**
+- Builds binaries for Linux (amd64, arm64), Windows (x86_64), and macOS (x86_64, arm64)
+- Builds all 4 programs per platform
+- Renames files to include version number (e.g., `atrforge-1.2.3-linux-amd64`)
+- Generates release notes from CHANGELOG.md
+- Creates a GitHub release with all binaries
+
+**Versioning:**
+- Auto-detects from git tags, or specify with `VERSION=v1.2.3`
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for details
+
+### Auto-Merge Workflow (`auto-merge.yml`)
+
+**Triggers:**
+- After successful CI build on `develop` branch
+
+**Actions:**
+- Automatically merges branch to `main`
+
+**Note:** This requires proper branch protection settings in GitHub.
+
+## Setup Instructions
+
+### 1. Enable GitHub Actions
+
+GitHub Actions are enabled by default. Ensure workflows are in `.github/workflows/`.
+
+### 2. Configure Branch Protection (Optional)
+
+For auto-merge to work:
+
+1. Go to Settings → Branches
+2. Add rule for `main` branch:
+   - Require pull request reviews (optional)
+   - Require status checks to pass
+   - Require branches to be up to date
+   - Include administrators
+
+### 3. Enable Workflow Permissions
+
+1. Go to Settings → Actions → General
+2. Under "Workflow permissions":
+   - Select "Read and write permissions"
+   - Check "Allow GitHub Actions to create and approve pull requests"
+
+### 4. Test the Pipeline
+
+```bash
+# Make a change
+git checkout -b test-ci
+# ... make changes ...
+git commit -am "Test CI"
+git push origin test-ci
+
+# Create PR or push to develop to trigger CI
+# After successful build, it will auto-merge to main (if configured)
+```
+
+## Creating Releases
+
+Releases are created **locally** using the Makefile:
+
+```bash
+# Build all platforms
+make release
+
+# Create GitHub release (auto-detects version or specify with VERSION=v1.2.3)
+make github-release
+```
+
+**Prerequisites:**
+- Docker (for macOS builds)
+- GitHub CLI (`gh`) installed and authenticated
+- Cross-compilation tools (or Docker for macOS)
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed release instructions.
+
+## Release Artifacts
+
+Each release includes versioned binaries for all 4 programs:
+- `atrforge-<version>-linux-amd64` - Linux amd64 binary
+- `atrforge-<version>-linux-arm64` - Linux arm64 binary
+- `atrforge-<version>-windows-x86_64.exe` - Windows binary
+- `atrforge-<version>-macos-x86_64` - macOS Intel binary
+- `atrforge-<version>-macos-arm64` - macOS Apple Silicon binary
+- `lsatr-<version>-linux-amd64` - Linux amd64 binary
+- `lsatr-<version>-linux-arm64` - Linux arm64 binary
+- `lsatr-<version>-windows-x86_64.exe` - Windows binary
+- `lsatr-<version>-macos-x86_64` - macOS Intel binary
+- `lsatr-<version>-macos-arm64` - macOS Apple Silicon binary
+- `convertatr-<version>-linux-amd64` - Linux amd64 binary
+- `convertatr-<version>-linux-arm64` - Linux arm64 binary
+- `convertatr-<version>-windows-x86_64.exe` - Windows binary
+- `convertatr-<version>-macos-x86_64` - macOS Intel binary
+- `convertatr-<version>-macos-arm64` - macOS Apple Silicon binary
+- `atrcp-<version>-linux-amd64` - Linux amd64 binary
+- `atrcp-<version>-linux-arm64` - Linux arm64 binary
+- `atrcp-<version>-windows-x86_64.exe` - Windows binary
+- `atrcp-<version>-macos-x86_64` - macOS Intel binary
+- `atrcp-<version>-macos-arm64` - macOS Apple Silicon binary
+
+## Troubleshooting
+
+### Build Fails
+
+- Check Actions tab for error logs
+- Verify all dependencies are available
+- Check compiler compatibility
+
+### Auto-Merge Not Working
+
+- Verify branch protection is configured
+- Check workflow permissions
+- Ensure CI workflow completes successfully
+
+### Release Not Created
+
+- Ensure you've built all platforms: `make release`
+- Verify GitHub CLI is installed and authenticated: `gh auth status`
+- Check that binaries exist in `release/` directory
+- Review Makefile output for errors
+
+## Customization
+
+### Release Workflow
+
+The release workflow (`.github/workflows/release.yml`) is disabled. Releases are created locally using `make github-release`. To modify the release process, edit the `github-release` target in the `Makefile`.
+
+### Disable Auto-Merge
+
+Delete or disable `.github/workflows/auto-merge.yml` if you prefer manual merging.
+
+### Custom Build Matrix
+
+Edit `.github/workflows/ci.yml` to add more platforms or compilers.
+
+## See Also
+
+- [GitHub Actions Documentation](https://docs.github.com/en/actions)
+- [Building Guide](BUILDING.md) - Local build instructions

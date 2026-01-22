@@ -1,0 +1,95 @@
+# Multi-stage Dockerfile for building atrforge releases
+# Usage:
+#   docker build -f Dockerfile.release -t atrforge-builder .
+#   docker run --rm -v $(pwd)/release:/workspace/release atrforge-builder
+#
+# Configuration Variables (set via ARG or customize directly):
+#   INCLUDE_DIRS    - Include directories (e.g., "-Iccan")
+#   CFLAGS          - Compiler flags (e.g., "-O3 -Wall -flto")
+#   LDLIBS          - Linker libraries (e.g., "-lm")
+#   BASE_IMAGE      - Base Docker image (default: ubuntu:22.04)
+
+ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE} AS base
+
+# Avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build dependencies
+# Customize this list based on your project's needs
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
+    gcc-aarch64-linux-gnu \
+    mingw-w64 \
+    make \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+# Copy source code
+COPY . .
+
+# Build stage for Linux amd64
+FROM base AS linux-amd64
+ARG INCLUDE_DIRS=
+ARG CFLAGS=-O3 -Wall -flto=auto
+ARG LDLIBS=
+RUN make clean && \
+    make CC=gcc \
+         CFLAGS="$(INCLUDE_DIRS) $(CFLAGS)" \
+         LDLIBS="$(LDLIBS)" \
+         BDIR=build-linux-amd64 \
+         ODIR=build-linux-amd64 \
+         PROG_DIR=build-linux-amd64/bin \
+         BUILD_DIR=build-linux-amd64
+
+# Build stage for Linux arm64
+FROM base AS linux-arm64
+ARG INCLUDE_DIRS=
+ARG CFLAGS=-O3 -Wall -flto=auto
+ARG LDLIBS=
+RUN make clean && \
+    make CC=aarch64-linux-gnu-gcc \
+         CFLAGS="$(INCLUDE_DIRS) $(CFLAGS)" \
+         LDLIBS="$(LDLIBS)" \
+         BDIR=build-linux-arm64 \
+         ODIR=build-linux-arm64 \
+         PROG_DIR=build-linux-arm64/bin \
+         BUILD_DIR=build-linux-arm64
+
+# Build stage for Windows x86_64
+FROM base AS windows-x86_64
+ARG INCLUDE_DIRS=
+ARG CFLAGS=-O3 -Wall -flto=auto
+ARG LDLIBS=
+RUN make clean && \
+    make CC=x86_64-w64-mingw32-gcc \
+         CFLAGS="$(INCLUDE_DIRS) $(CFLAGS)" \
+         LDLIBS="$(LDLIBS)" \
+         BDIR=build-windows-x86_64 \
+         ODIR=build-windows-x86_64 \
+         PROG_DIR=build-windows-x86_64/bin \
+         BUILD_DIR=build-windows-x86_64
+
+# Final stage to collect all binaries
+FROM base AS release
+ARG RELEASE_DIR=release
+RUN mkdir -p /workspace/$(RELEASE_DIR)
+COPY --from=linux-amd64 /workspace/build-linux-amd64/bin/atrforge /workspace/$(RELEASE_DIR)/atrforge-linux-amd64
+COPY --from=linux-amd64 /workspace/build-linux-amd64/bin/lsatr /workspace/$(RELEASE_DIR)/lsatr-linux-amd64
+COPY --from=linux-amd64 /workspace/build-linux-amd64/bin/convertatr /workspace/$(RELEASE_DIR)/convertatr-linux-amd64
+COPY --from=linux-amd64 /workspace/build-linux-amd64/bin/atrcp /workspace/$(RELEASE_DIR)/atrcp-linux-amd64
+COPY --from=linux-arm64 /workspace/build-linux-arm64/bin/atrforge /workspace/$(RELEASE_DIR)/atrforge-linux-arm64
+COPY --from=linux-arm64 /workspace/build-linux-arm64/bin/lsatr /workspace/$(RELEASE_DIR)/lsatr-linux-arm64
+COPY --from=linux-arm64 /workspace/build-linux-arm64/bin/convertatr /workspace/$(RELEASE_DIR)/convertatr-linux-arm64
+COPY --from=linux-arm64 /workspace/build-linux-arm64/bin/atrcp /workspace/$(RELEASE_DIR)/atrcp-linux-arm64
+COPY --from=windows-x86_64 /workspace/build-windows-x86_64/bin/atrforge.exe /workspace/$(RELEASE_DIR)/atrforge-windows-x86_64.exe
+COPY --from=windows-x86_64 /workspace/build-windows-x86_64/bin/lsatr.exe /workspace/$(RELEASE_DIR)/lsatr-windows-x86_64.exe
+COPY --from=windows-x86_64 /workspace/build-windows-x86_64/bin/convertatr.exe /workspace/$(RELEASE_DIR)/convertatr-windows-x86_64.exe
+COPY --from=windows-x86_64 /workspace/build-windows-x86_64/bin/atrcp.exe /workspace/$(RELEASE_DIR)/atrcp-windows-x86_64.exe
+
+RUN chmod +x /workspace/$(RELEASE_DIR)/*-linux-* && \
+    chmod +x /workspace/$(RELEASE_DIR)/*-arm64
+
+CMD ["ls", "-lh", "/workspace/release/"]
