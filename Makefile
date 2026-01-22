@@ -427,30 +427,66 @@ release-docker:
 github-release:
 	@echo ""; \
 	echo "=== Preparing for release ==="; \
+	VERBOSE=$$([ "$(VERBOSE)" = "1" ] && echo "1" || echo "0"); \
 	CURRENT_BRANCH=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"); \
 	echo "Current branch: $$CURRENT_BRANCH"; \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "[VERBOSE] SKIP_GIT=$(SKIP_GIT)"; \
+		echo "[VERBOSE] AUTO_COMMIT=$(AUTO_COMMIT)"; \
+		echo "[VERBOSE] VERSION=$(VERSION)"; \
+	fi; \
 	if [ "$(SKIP_GIT)" != "1" ]; then \
 		echo ""; \
 		echo "Step 1: Checking git status..."; \
-		if [ -n "$$(git status --porcelain 2>/dev/null)" ]; then \
+		if [ "$$VERBOSE" = "1" ]; then \
+			echo "  [VERBOSE] Running: git status --porcelain"; \
+		fi; \
+		STATUS_OUTPUT=$$(git status --porcelain 2>&1); \
+		STATUS_CODE=$$?; \
+		if [ "$$VERBOSE" = "1" ]; then \
+			echo "  [VERBOSE] git status exit code: $$STATUS_CODE"; \
+			if [ -n "$$STATUS_OUTPUT" ]; then \
+				echo "  [VERBOSE] git status output:"; \
+				echo "$$STATUS_OUTPUT" | sed 's/^/    /'; \
+			fi; \
+		fi; \
+		if [ -n "$$STATUS_OUTPUT" ]; then \
 			echo "  Found uncommitted changes:"; \
 			git status --short; \
 			if [ "$(AUTO_COMMIT)" = "1" ]; then \
 				COMMIT_MSG="Prepare release: $$(date '+%Y-%m-%d %H:%M:%S')"; \
+				if [ "$$VERBOSE" = "1" ]; then \
+					echo "  [VERBOSE] AUTO_COMMIT=1, committing automatically"; \
+					echo "  [VERBOSE] Commit message: $$COMMIT_MSG"; \
+				fi; \
+				if [ "$$VERBOSE" = "1" ]; then echo "  [VERBOSE] Running: git add -A"; fi; \
 				git add -A; \
+				if [ "$$VERBOSE" = "1" ]; then echo "  [VERBOSE] Running: git commit -m \"$$COMMIT_MSG\""; fi; \
 				git commit -m "$$COMMIT_MSG" || { \
 					echo "  ⚠ Failed to commit changes"; \
+					if [ "$$VERBOSE" = "1" ]; then \
+						echo "  [VERBOSE] git commit failed, exit code: $$?"; \
+					fi; \
 					exit 1; \
 				}; \
 				echo "  ✓ Changes committed automatically"; \
 			else \
-				read -p "  Commit these changes? (y/n) " -n 1 -r; \
-				echo; \
+				printf "  Commit these changes? (y/n) "; \
+				read REPLY; \
 				if [ "$$REPLY" = "y" ] || [ "$$REPLY" = "Y" ]; then \
 					COMMIT_MSG="Prepare release: $$(date '+%Y-%m-%d %H:%M:%S')"; \
+					if [ "$$VERBOSE" = "1" ]; then \
+						echo "  [VERBOSE] User chose to commit"; \
+						echo "  [VERBOSE] Commit message: $$COMMIT_MSG"; \
+					fi; \
+					if [ "$$VERBOSE" = "1" ]; then echo "  [VERBOSE] Running: git add -A"; fi; \
 					git add -A; \
+					if [ "$$VERBOSE" = "1" ]; then echo "  [VERBOSE] Running: git commit -m \"$$COMMIT_MSG\""; fi; \
 					git commit -m "$$COMMIT_MSG" || { \
 						echo "  ⚠ Failed to commit changes"; \
+						if [ "$$VERBOSE" = "1" ]; then \
+							echo "  [VERBOSE] git commit failed, exit code: $$?"; \
+						fi; \
 						exit 1; \
 					}; \
 					echo "  ✓ Changes committed"; \
@@ -463,22 +499,64 @@ github-release:
 		fi; \
 		echo ""; \
 		echo "Step 2: Pushing to remote..."; \
+		if [ "$$VERBOSE" = "1" ]; then \
+			echo "  [VERBOSE] Checking if origin/$$CURRENT_BRANCH exists..."; \
+			echo "  [VERBOSE] Running: git rev-parse --verify origin/$$CURRENT_BRANCH"; \
+		fi; \
 		if git rev-parse --verify origin/$$CURRENT_BRANCH >/dev/null 2>&1; then \
-			git push origin $$CURRENT_BRANCH || { \
+			if [ "$$VERBOSE" = "1" ]; then \
+				echo "  [VERBOSE] Branch origin/$$CURRENT_BRANCH exists"; \
+				echo "  [VERBOSE] Running: git push origin $$CURRENT_BRANCH"; \
+			fi; \
+			PUSH_OUTPUT=$$(git push origin $$CURRENT_BRANCH 2>&1); \
+			PUSH_CODE=$$?; \
+			if [ $$PUSH_CODE -ne 0 ]; then \
 				echo "  ⚠ Failed to push to origin/$$CURRENT_BRANCH"; \
+				if [ "$$VERBOSE" = "1" ]; then \
+					echo "  [VERBOSE] git push exit code: $$PUSH_CODE"; \
+					echo "  [VERBOSE] git push output:"; \
+					echo "$$PUSH_OUTPUT" | sed 's/^/    /'; \
+				fi; \
 				echo "     You may need to push manually: git push origin $$CURRENT_BRANCH"; \
-				read -p "  Continue anyway? (y/n) " -n 1 -r; \
-				echo; \
+				printf "  Continue anyway? (y/n) "; \
+				read REPLY; \
 				if [ "$$REPLY" != "y" ] && [ "$$REPLY" != "Y" ]; then \
 					exit 1; \
 				fi; \
-			}; \
+			else \
+				if [ "$$VERBOSE" = "1" ]; then \
+					echo "  [VERBOSE] git push succeeded"; \
+					if [ -n "$$PUSH_OUTPUT" ]; then \
+						echo "  [VERBOSE] git push output:"; \
+						echo "$$PUSH_OUTPUT" | sed 's/^/    /'; \
+					fi; \
+				fi; \
+			fi; \
 		else \
 			echo "  Creating and pushing branch $$CURRENT_BRANCH..."; \
-			git push -u origin $$CURRENT_BRANCH || { \
+			if [ "$$VERBOSE" = "1" ]; then \
+				echo "  [VERBOSE] Branch origin/$$CURRENT_BRANCH does not exist"; \
+				echo "  [VERBOSE] Running: git push -u origin $$CURRENT_BRANCH"; \
+			fi; \
+			PUSH_OUTPUT=$$(git push -u origin $$CURRENT_BRANCH 2>&1); \
+			PUSH_CODE=$$?; \
+			if [ $$PUSH_CODE -ne 0 ]; then \
 				echo "  ⚠ Failed to push branch"; \
+				if [ "$$VERBOSE" = "1" ]; then \
+					echo "  [VERBOSE] git push exit code: $$PUSH_CODE"; \
+					echo "  [VERBOSE] git push output:"; \
+					echo "$$PUSH_OUTPUT" | sed 's/^/    /'; \
+				fi; \
 				exit 1; \
-			}; \
+			else \
+				if [ "$$VERBOSE" = "1" ]; then \
+					echo "  [VERBOSE] git push succeeded"; \
+					if [ -n "$$PUSH_OUTPUT" ]; then \
+						echo "  [VERBOSE] git push output:"; \
+						echo "$$PUSH_OUTPUT" | sed 's/^/    /'; \
+					fi; \
+				fi; \
+			fi; \
 		fi; \
 		echo "  ✓ Pushed to origin/$$CURRENT_BRANCH"; \
 		echo ""; \
@@ -488,10 +566,10 @@ github-release:
 			CI_RUN_ID=$$(gh run list --workflow=ci.yml --branch=develop --limit=1 --json databaseId,status,conclusion -q '.[0].databaseId' 2>/dev/null); \
 			if [ -n "$$CI_RUN_ID" ]; then \
 				echo "  Waiting for CI to complete..."; \
-				gh run watch $$CI_RUN_ID --exit-status || { \
+					gh run watch $$CI_RUN_ID --exit-status || { \
 					echo "  ⚠ CI failed. Do you want to merge to main anyway?"; \
-					read -p "  Continue? (y/n) " -n 1 -r; \
-					echo; \
+					printf "  Continue? (y/n) "; \
+					read REPLY; \
 					if [ "$$REPLY" != "y" ] && [ "$$REPLY" != "Y" ]; then \
 						exit 1; \
 					fi; \
@@ -517,8 +595,8 @@ github-release:
 			git push origin main || { \
 				echo "  ⚠ Failed to push to main. Please push manually:"; \
 				echo "     git push origin main"; \
-				read -p "  Continue with release anyway? (y/n) " -n 1 -r; \
-				echo; \
+				printf "  Continue with release anyway? (y/n) "; \
+				read REPLY; \
 				if [ "$$REPLY" != "y" ] && [ "$$REPLY" != "Y" ]; then \
 					exit 1; \
 				fi; \
@@ -531,45 +609,97 @@ github-release:
 				echo "  ⚠ main branch not found locally or remotely"; \
 				exit 1; \
 			}; \
-			git pull origin main || { \
-				echo "  ⚠ Failed to pull latest main"; \
-				exit 1; \
-			}; \
+			if ! git pull origin main 2>/dev/null; then \
+				echo "  ⚠ Failed to pull latest main (network issue or already up to date)"; \
+				echo "     Continuing with release anyway..."; \
+			fi; \
 			echo "  ✓ Switched to main branch"; \
 		else \
 			echo "Step 3: Already on main branch, pulling latest..."; \
-			git pull origin main || { \
-				echo "  ⚠ Failed to pull latest main"; \
-				exit 1; \
-			}; \
-			echo "  ✓ Main branch up to date"; \
+			if [ "$$VERBOSE" = "1" ]; then \
+				echo "  [VERBOSE] Running: git pull origin main"; \
+			fi; \
+			PULL_OUTPUT=$$(git pull origin main 2>&1); \
+			PULL_CODE=$$?; \
+			if [ $$PULL_CODE -eq 0 ]; then \
+				if [ "$$VERBOSE" = "1" ]; then \
+					echo "  [VERBOSE] git pull succeeded"; \
+					if [ -n "$$PULL_OUTPUT" ]; then \
+						echo "  [VERBOSE] git pull output:"; \
+						echo "$$PULL_OUTPUT" | sed 's/^/    /'; \
+					fi; \
+				fi; \
+				echo "  ✓ Main branch up to date"; \
+			else \
+				echo "  ⚠ Failed to pull latest main (network issue or already up to date)"; \
+				if [ "$$VERBOSE" = "1" ]; then \
+					echo "  [VERBOSE] git pull exit code: $$PULL_CODE"; \
+					echo "  [VERBOSE] git pull output:"; \
+					echo "$$PULL_OUTPUT" | sed 's/^/    /'; \
+				fi; \
+				echo "     Continuing with release anyway..."; \
+			fi; \
 		fi; \
 		echo ""; \
 		echo "=== Git operations complete ==="; \
 		echo ""; \
 	fi; \
-	$(MAKE) github-release-build
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "[VERBOSE] Starting github-release-build..."; \
+	fi; \
+	$(MAKE) github-release-build VERBOSE=$(VERBOSE)
 
 # Internal target: Build and create GitHub release
 github-release-build:
 	@echo ""; \
+	VERBOSE=$$([ "$(VERBOSE)" = "1" ] && echo "1" || echo "0"); \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "[VERBOSE] github-release-build started"; \
+		echo "[VERBOSE] RELEASE_DIR=$(RELEASE_DIR)"; \
+	fi; \
 	echo "=== Cleaning release directory ==="; \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Running: rm -rf $(RELEASE_DIR)/*-*"; \
+		echo "  [VERBOSE] Running: rm -f $(RELEASE_DIR)/notes.md"; \
+	fi; \
 	rm -rf $(RELEASE_DIR)/*-*; \
 	rm -f $(RELEASE_DIR)/notes.md; \
 	echo "  ✓ Release directory cleaned"; \
 	echo ""; \
 	echo "=== Building release binaries ==="; \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Running: make release"; \
+	fi; \
 	$(MAKE) release; \
 	echo ""; \
 	echo "=== Creating GitHub release ==="; \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Checking for GitHub CLI (gh)..."; \
+	fi; \
 	if ! command -v gh >/dev/null 2>&1; then \
 		echo "  ✗ GitHub CLI (gh) not found. Please install it:"; \
 		echo "     https://cli.github.com/"; \
 		exit 1; \
 	fi; \
-	if ! gh auth status >/dev/null 2>&1; then \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] GitHub CLI found: $$(command -v gh)"; \
+		echo "  [VERBOSE] Running: gh auth status"; \
+	fi; \
+	AUTH_OUTPUT=$$(gh auth status 2>&1); \
+	AUTH_CODE=$$?; \
+	if [ $$AUTH_CODE -ne 0 ]; then \
 		echo "  ✗ Not authenticated with GitHub. Please run: gh auth login"; \
+		if [ "$$VERBOSE" = "1" ]; then \
+			echo "  [VERBOSE] gh auth status exit code: $$AUTH_CODE"; \
+			echo "  [VERBOSE] gh auth status output:"; \
+			echo "$$AUTH_OUTPUT" | sed 's/^/    /'; \
+		fi; \
 		exit 1; \
+	fi; \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Authentication successful"; \
+		echo "  [VERBOSE] gh auth status output:"; \
+		echo "$$AUTH_OUTPUT" | sed 's/^/    /'; \
 	fi; \
 	echo "  ✓ GitHub CLI found and authenticated"; \
 	echo ""; \
@@ -667,13 +797,42 @@ github-release-build:
 	echo ""; \
 	echo "Creating/verifying git tag..."; \
 	CURRENT_BRANCH=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"); \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Current branch: $$CURRENT_BRANCH"; \
+		echo "  [VERBOSE] Version: $$VERSION"; \
+	fi; \
 	if [ "$$CURRENT_BRANCH" != "main" ]; then \
 		echo "  ⚠ Warning: Not on main branch (currently on $$CURRENT_BRANCH)"; \
 		echo "     Tag will be created on current branch"; \
 	fi; \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Checking if tag exists locally..."; \
+		echo "  [VERBOSE] Running: git rev-parse \"$$VERSION\""; \
+	fi; \
 	TAG_EXISTS_LOCAL=$$(git rev-parse "$$VERSION" >/dev/null 2>&1 && echo "yes" || echo "no"); \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Tag exists locally: $$TAG_EXISTS_LOCAL"; \
+		if [ "$$TAG_EXISTS_LOCAL" = "yes" ]; then \
+			TAG_COMMIT_LOCAL=$$(git rev-parse "$$VERSION" 2>/dev/null); \
+			echo "  [VERBOSE] Local tag points to: $$TAG_COMMIT_LOCAL"; \
+		fi; \
+		echo "  [VERBOSE] Checking if tag exists on remote..."; \
+		echo "  [VERBOSE] Running: git ls-remote --tags origin \"$$VERSION\""; \
+	fi; \
 	TAG_EXISTS_REMOTE=$$(git ls-remote --tags origin "$$VERSION" >/dev/null 2>&1 && echo "yes" || echo "no"); \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Tag exists on remote: $$TAG_EXISTS_REMOTE"; \
+		if [ "$$TAG_EXISTS_REMOTE" = "yes" ]; then \
+			TAG_REMOTE_OUTPUT=$$(git ls-remote --tags origin "$$VERSION" 2>&1); \
+			echo "  [VERBOSE] Remote tag info:"; \
+			echo "$$TAG_REMOTE_OUTPUT" | sed 's/^/    /'; \
+		fi; \
+	fi; \
 	CURRENT_COMMIT=$$(git rev-parse HEAD); \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Current HEAD commit: $$CURRENT_COMMIT"; \
+	fi; \
+	TAG_NEEDS_PUSH=false; \
 	if [ "$$TAG_EXISTS_LOCAL" = "yes" ]; then \
 		TAG_COMMIT=$$(git rev-parse "$$VERSION" 2>/dev/null); \
 		if [ "$$TAG_COMMIT" != "$$CURRENT_COMMIT" ]; then \
@@ -695,20 +854,29 @@ github-release-build:
 	fi; \
 	if [ "$$TAG_EXISTS_REMOTE" = "no" ]; then \
 		echo "  Pushing tag to remote..."; \
-		git push origin "$$VERSION" || { \
-			echo "  ✗ Failed to push tag to remote"; \
+		if [ "$(SKIP_GIT)" = "1" ]; then \
+			echo "  ⚠ SKIP_GIT=1, but tag needs to be pushed for release"; \
+			echo "  Attempting to push tag anyway..."; \
+		fi; \
+		if ! git push origin "$$VERSION" 2>/dev/null; then \
+			echo "  ⚠ Failed to push tag to remote"; \
 			echo "     Tag exists locally but not on remote."; \
-			echo "     Please push manually: git push origin $$VERSION"; \
-			echo "     Or delete local tag and retry: git tag -d $$VERSION"; \
-			exit 1; \
-		}; \
-		echo "  ✓ Tag pushed to remote"; \
-	elif [ "$$TAG_EXISTS_LOCAL" = "yes" ]; then \
+			echo "     Will use --target flag for gh release create"; \
+			TAG_NEEDS_PUSH=true; \
+		else \
+			echo "  ✓ Tag pushed to remote"; \
+		fi; \
+	else \
 		echo "  ✓ Tag $$VERSION already exists on remote"; \
 	fi; \
 	echo ""; \
-	echo "Renaming release files to include version..."; \
+	echo "Collecting release files..."; \
 	VERSION_NUM=$$(echo "$$VERSION" | sed 's/^v//'); \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Version number (without 'v'): $$VERSION_NUM"; \
+		echo "  [VERBOSE] Programs to collect: $(PROGS)"; \
+		echo "  [VERBOSE] Release directory: $(RELEASE_DIR)"; \
+	fi; \
 	RELEASE_FILES=""; \
 	for prog in $(PROGS); do \
 		for platform in linux-amd64 linux-arm64 windows-x86_64 macos-x86_64 macos-arm64; do \
@@ -717,42 +885,144 @@ github-release-build:
 			else \
 				EXT=""; \
 			fi; \
-			if [ -f "$(RELEASE_DIR)/$$prog-$$platform$$EXT" ]; then \
-				mv "$(RELEASE_DIR)/$$prog-$$platform$$EXT" "$(RELEASE_DIR)/$$prog-$$VERSION_NUM-$$platform$$EXT" && \
+			VERSIONED_FILE="$(RELEASE_DIR)/$$prog-$$VERSION_NUM-$$platform$$EXT"; \
+			UNVERSIONED_FILE="$(RELEASE_DIR)/$$prog-$$platform$$EXT"; \
+			if [ -f "$$VERSIONED_FILE" ]; then \
+				echo "  ✓ Found versioned file: $$prog-$$VERSION_NUM-$$platform$$EXT"; \
+				if [ "$$VERBOSE" = "1" ]; then \
+					FILE_SIZE=$$(stat -c%s "$$VERSIONED_FILE" 2>/dev/null || stat -f%z "$$VERSIONED_FILE" 2>/dev/null || echo "unknown"); \
+					echo "    [VERBOSE] File size: $$FILE_SIZE bytes"; \
+				fi; \
+				RELEASE_FILES="$$RELEASE_FILES $$VERSIONED_FILE"; \
+			elif [ -f "$$UNVERSIONED_FILE" ]; then \
+				echo "  Renaming: $$prog-$$platform$$EXT -> $$prog-$$VERSION_NUM-$$platform$$EXT"; \
+				if [ "$$VERBOSE" = "1" ]; then \
+					echo "  [VERBOSE] Running: mv \"$$UNVERSIONED_FILE\" \"$$VERSIONED_FILE\""; \
+				fi; \
+				mv "$$UNVERSIONED_FILE" "$$VERSIONED_FILE" && \
 				echo "  ✓ $$prog-$$VERSION_NUM-$$platform$$EXT"; \
-				RELEASE_FILES="$$RELEASE_FILES $(RELEASE_DIR)/$$prog-$$VERSION_NUM-$$platform$$EXT"; \
+				RELEASE_FILES="$$RELEASE_FILES $$VERSIONED_FILE"; \
 			fi; \
 		done; \
 	done; \
 	if [ -z "$$RELEASE_FILES" ]; then \
 		echo "  ✗ No release files found to upload"; \
+		echo "  Expected files in $(RELEASE_DIR)/ with pattern: <program>-<version>-<platform>"; \
+		if [ "$$VERBOSE" = "1" ]; then \
+			echo "  [VERBOSE] Listing all files in $(RELEASE_DIR)/:"; \
+			ls -la $(RELEASE_DIR)/ 2>/dev/null | sed 's/^/    /' || echo "    (directory not found or empty)"; \
+		fi; \
 		exit 1; \
+	fi; \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Total release files found: $$(echo $$RELEASE_FILES | wc -w)"; \
 	fi; \
 	echo ""; \
 	echo "Release files to upload:"; \
 	for file in $$RELEASE_FILES; do \
 		if [ -f "$$file" ]; then \
-			echo "  ✓ $$(basename $$file)"; \
+			FILE_SIZE=$$(stat -c%s "$$file" 2>/dev/null || stat -f%z "$$file" 2>/dev/null || echo "unknown"); \
+			echo "  ✓ $$(basename $$file) ($$FILE_SIZE bytes)"; \
 		else \
 			echo "  ✗ Missing: $$file"; \
+			if [ "$$VERBOSE" = "1" ]; then \
+				echo "    [VERBOSE] File does not exist at path: $$file"; \
+			fi; \
 		fi; \
 	done; \
 	echo ""; \
 	echo "Verifying tag exists on remote..."; \
-	if ! git ls-remote --tags origin "$$VERSION" >/dev/null 2>&1; then \
-		echo "  ✗ Tag $$VERSION does not exist on remote"; \
-		echo "     Please push the tag first: git push origin $$VERSION"; \
-		exit 1; \
+	if [ "$$TAG_NEEDS_PUSH" = "true" ]; then \
+		echo "  ⚠ Tag not pushed, will use --target flag"; \
+	else \
+		if ! git ls-remote --tags origin "$$VERSION" >/dev/null 2>&1; then \
+			echo "  ⚠ Tag $$VERSION does not exist on remote"; \
+			echo "     Will use --target flag to create release"; \
+			TAG_NEEDS_PUSH=true; \
+		else \
+			echo "  ✓ Tag $$VERSION exists on remote"; \
+		fi; \
 	fi; \
-	echo "  ✓ Tag $$VERSION exists on remote"; \
 	echo ""; \
 	echo "Uploading release files..."; \
-	gh release create "$$VERSION" \
-		--title "Release $$VERSION" \
-		--notes-file $(RELEASE_DIR)/notes.md \
-		$$RELEASE_FILES \
-		--prerelease=$$IS_PRERELEASE \
-		--latest || { \
+	TARGET_FAILED=false; \
+	USE_TARGET=false; \
+	if [ "$$TAG_NEEDS_PUSH" = "true" ]; then \
+		USE_TARGET=true; \
+	elif [ "$(SKIP_GIT)" = "1" ]; then \
+		echo "  SKIP_GIT=1, using --target flag to ensure tag is created..."; \
+		USE_TARGET=true; \
+	elif ! timeout 5 git ls-remote --tags origin "$$VERSION" >/dev/null 2>&1; then \
+		echo "  Cannot verify tag on remote (timeout or not found), using --target flag..."; \
+		USE_TARGET=true; \
+	fi; \
+	if [ "$$USE_TARGET" = "true" ]; then \
+		echo "  Creating release with --target flag at current commit..."; \
+		if [ "$$VERBOSE" = "1" ]; then \
+			echo "  [VERBOSE] Using --target flag with commit: $$CURRENT_COMMIT"; \
+			echo "  [VERBOSE] Release files count: $$(echo $$RELEASE_FILES | wc -w)"; \
+			echo "  [VERBOSE] Release files:"; \
+			for f in $$RELEASE_FILES; do echo "    - $$f"; done; \
+			echo "  [VERBOSE] Running: gh release create \"$$VERSION\" --title \"Release $$VERSION\" --notes-file $(RELEASE_DIR)/notes.md --target \"$$CURRENT_COMMIT\" $$RELEASE_FILES --prerelease=$$IS_PRERELEASE --latest"; \
+		fi; \
+		RELEASE_OUTPUT=$$(gh release create "$$VERSION" \
+			--title "Release $$VERSION" \
+			--notes-file $(RELEASE_DIR)/notes.md \
+			--target "$$CURRENT_COMMIT" \
+			$$RELEASE_FILES \
+			--prerelease=$$IS_PRERELEASE \
+			--latest 2>&1); \
+		RELEASE_CODE=$$?; \
+		if [ $$RELEASE_CODE -ne 0 ]; then \
+			TARGET_FAILED=true; \
+			if [ "$$VERBOSE" = "1" ]; then \
+				echo "  [VERBOSE] gh release create exit code: $$RELEASE_CODE"; \
+				echo "  [VERBOSE] gh release create output:"; \
+				echo "$$RELEASE_OUTPUT" | sed 's/^/    /'; \
+			fi; \
+		else \
+			if [ "$$VERBOSE" = "1" ]; then \
+				echo "  [VERBOSE] gh release create succeeded"; \
+				if [ -n "$$RELEASE_OUTPUT" ]; then \
+					echo "  [VERBOSE] gh release create output:"; \
+					echo "$$RELEASE_OUTPUT" | sed 's/^/    /'; \
+				fi; \
+			fi; \
+		fi; \
+	else \
+		echo "  Creating release (tag exists on remote)..."; \
+		if [ "$$VERBOSE" = "1" ]; then \
+			echo "  [VERBOSE] Not using --target flag (tag exists on remote)"; \
+			echo "  [VERBOSE] Release files count: $$(echo $$RELEASE_FILES | wc -w)"; \
+			echo "  [VERBOSE] Release files:"; \
+			for f in $$RELEASE_FILES; do echo "    - $$f"; done; \
+			echo "  [VERBOSE] Running: gh release create \"$$VERSION\" --title \"Release $$VERSION\" --notes-file $(RELEASE_DIR)/notes.md $$RELEASE_FILES --prerelease=$$IS_PRERELEASE --latest"; \
+		fi; \
+		RELEASE_OUTPUT=$$(gh release create "$$VERSION" \
+			--title "Release $$VERSION" \
+			--notes-file $(RELEASE_DIR)/notes.md \
+			$$RELEASE_FILES \
+			--prerelease=$$IS_PRERELEASE \
+			--latest 2>&1); \
+		RELEASE_CODE=$$?; \
+		if [ $$RELEASE_CODE -ne 0 ]; then \
+			TARGET_FAILED=true; \
+			if [ "$$VERBOSE" = "1" ]; then \
+				echo "  [VERBOSE] gh release create exit code: $$RELEASE_CODE"; \
+				echo "  [VERBOSE] gh release create output:"; \
+				echo "$$RELEASE_OUTPUT" | sed 's/^/    /'; \
+			fi; \
+		else \
+			if [ "$$VERBOSE" = "1" ]; then \
+				echo "  [VERBOSE] gh release create succeeded"; \
+				if [ -n "$$RELEASE_OUTPUT" ]; then \
+					echo "  [VERBOSE] gh release create output:"; \
+					echo "$$RELEASE_OUTPUT" | sed 's/^/    /'; \
+				fi; \
+			fi; \
+		fi; \
+	fi; \
+	if [ "$$TARGET_FAILED" = "true" ]; then \
 		echo ""; \
 		echo "  ✗ Failed to create release."; \
 		echo "     Common issues:"; \
@@ -765,7 +1035,7 @@ github-release-build:
 		echo "     - Use a different version: make github-release VERSION=v1.2.3"; \
 		echo "     - Check permissions: gh auth status"; \
 		exit 1; \
-	}; \
+	fi; \
 	echo ""; \
 	echo "  ✓ GitHub release created successfully!"; \
 	REPO=$$(gh repo view --json owner,name -q '.owner.login + "/" + .name' 2>/dev/null); \

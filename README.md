@@ -3,6 +3,41 @@ Atari ATR disk image tools
 
 Tools to create, list, extract, modify, and convert Atari `ATR` disk images.
 
+Quick Links
+-----------
+
+- **[GitHub Releases](https://github.com/Atari-Foundry/atrforge/releases)** – Download pre-built
+  binaries for Linux, macOS, and Windows (atrforge, lsatr, convertatr, atrcp).
+- **[Documentation](docs/)** – Full CLI reference, examples, and troubleshooting guides.
+- **[CHANGELOG](CHANGELOG.md)** – Detailed history of every release.
+
+GitHub Releases
+---------------
+
+Each tagged release publishes ready-to-run binaries for every platform the tools support. Visit
+the [releases page](https://github.com/Atari-Foundry/atrforge/releases) and grab the assets that
+match your environment:
+
+| Platform                | Assets (replace `<VERSION>` with the release tag, e.g. `v1.0.70`) |
+| ----------------------- | ---------------------------------------------------------------- |
+| Linux x86_64 / arm64    | `atrforge-<VERSION>-linux-amd64`, `atrforge-<VERSION>-linux-arm64` |
+| macOS x86_64 / arm64    | `atrforge-<VERSION>-macos-x86_64`, `atrforge-<VERSION>-macos-arm64` |
+| Windows x86_64          | `atrforge-<VERSION>-windows-x86_64.exe`                            |
+| Companion tools         | Matching `lsatr`, `convertatr`, and `atrcp` binaries for each OS   |
+
+With the GitHub CLI you can pull the latest Linux build, for example:
+
+```
+gh release download --repo Atari-Foundry/atrforge --latest --pattern "atrforge-*-linux-amd64"
+```
+
+Or download directly with `curl` by replacing `<VERSION>` with the tag you want:
+
+```
+curl -LO https://github.com/Atari-Foundry/atrforge/releases/download/<VERSION>/atrforge-<VERSION>-linux-amd64
+chmod +x atrforge-<VERSION>-linux-amd64
+```
+
 atrforge: Create ATR images from list of files
 ---------------------------------------------
 
