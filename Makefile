@@ -428,13 +428,23 @@ github-release:
 	@echo ""; \
 	echo "=== Preparing for release ==="; \
 	VERBOSE=$$([ "$(VERBOSE)" = "1" ] && echo "1" || echo "0"); \
-	CURRENT_BRANCH=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"); \
-	echo "Current branch: $$CURRENT_BRANCH"; \
 	if [ "$$VERBOSE" = "1" ]; then \
 		echo "[VERBOSE] SKIP_GIT=$(SKIP_GIT)"; \
 		echo "[VERBOSE] AUTO_COMMIT=$(AUTO_COMMIT)"; \
 		echo "[VERBOSE] VERSION=$(VERSION)"; \
 	fi; \
+	echo ""; \
+	echo "Step 0: Cleaning build artifacts..."; \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Running: make clean"; \
+	fi; \
+	$(MAKE) clean || { \
+		echo "  ⚠ Warning: make clean failed, continuing anyway..."; \
+	}; \
+	echo "  ✓ Clean complete"; \
+	echo ""; \
+	CURRENT_BRANCH=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"); \
+	echo "Current branch: $$CURRENT_BRANCH"; \
 	if [ "$(SKIP_GIT)" != "1" ]; then \
 		echo ""; \
 		echo "Step 1: Checking git status..."; \
@@ -931,6 +941,60 @@ github-release-build:
 		fi; \
 	done; \
 	echo ""; \
+	echo "Generating release manifest..."; \
+	MANIFEST_FILE="$(RELEASE_DIR)/manifest.json"; \
+	echo "{" > "$$MANIFEST_FILE"; \
+	echo "  \"version\": \"$$VERSION\"," >> "$$MANIFEST_FILE"; \
+	echo "  \"release_date\": \"$$(date -u +%Y-%m-%dT%H:%M:%SZ)\"," >> "$$MANIFEST_FILE"; \
+	echo "  \"files\": [" >> "$$MANIFEST_FILE"; \
+	FIRST_FILE=true; \
+	for file in $$RELEASE_FILES; do \
+		if [ -f "$$file" ]; then \
+			FILENAME=$$(basename "$$file"); \
+			FILE_SIZE=$$(stat -c%s "$$file" 2>/dev/null || stat -f%z "$$file" 2>/dev/null || echo "0"); \
+			if command -v sha256sum >/dev/null 2>&1; then \
+				FILE_SHA256=$$(sha256sum "$$file" | cut -d' ' -f1); \
+			elif command -v shasum >/dev/null 2>&1; then \
+				FILE_SHA256=$$(shasum -a 256 "$$file" | cut -d' ' -f1); \
+			else \
+				FILE_SHA256=""; \
+			fi; \
+			PROG_NAME=$$(echo "$$FILENAME" | sed -E 's/-[0-9]+\.[0-9]+\.[0-9]+-.*//'); \
+			PLATFORM_PART=$$(echo "$$FILENAME" | sed -E 's/.*-[0-9]+\.[0-9]+\.[0-9]+-(.*)$$/\1/' | sed 's/\.exe$$//'); \
+			OS=$$(echo "$$PLATFORM_PART" | cut -d'-' -f1); \
+			ARCH=$$(echo "$$PLATFORM_PART" | cut -d'-' -f2-); \
+			if [ "$$OS" = "windows" ]; then \
+				EXT=".exe"; \
+			else \
+				EXT=""; \
+			fi; \
+			if [ "$$FIRST_FILE" = "true" ]; then \
+				FIRST_FILE=false; \
+			else \
+				echo "," >> "$$MANIFEST_FILE"; \
+			fi; \
+			printf "    {" >> "$$MANIFEST_FILE"; \
+			printf "\"name\": \"$$FILENAME\"," >> "$$MANIFEST_FILE"; \
+			printf "\"program\": \"$$PROG_NAME\"," >> "$$MANIFEST_FILE"; \
+			printf "\"os\": \"$$OS\"," >> "$$MANIFEST_FILE"; \
+			printf "\"arch\": \"$$ARCH\"," >> "$$MANIFEST_FILE"; \
+			printf "\"size\": $$FILE_SIZE," >> "$$MANIFEST_FILE"; \
+			if [ -n "$$FILE_SHA256" ]; then \
+				printf "\"sha256\": \"$$FILE_SHA256\"," >> "$$MANIFEST_FILE"; \
+			fi; \
+			printf "\"download_url\": \"https://github.com/Atari-Foundry/atrforge/releases/download/$$VERSION/$$FILENAME\"" >> "$$MANIFEST_FILE"; \
+			printf "}" >> "$$MANIFEST_FILE"; \
+		fi; \
+	done; \
+	echo "" >> "$$MANIFEST_FILE"; \
+	echo "  ]" >> "$$MANIFEST_FILE"; \
+	echo "}" >> "$$MANIFEST_FILE"; \
+	echo "  ✓ Manifest generated: $$MANIFEST_FILE"; \
+	if [ "$$VERBOSE" = "1" ]; then \
+		echo "  [VERBOSE] Manifest contents:"; \
+		cat "$$MANIFEST_FILE" | sed 's/^/    /'; \
+	fi; \
+	echo ""; \
 	echo "Verifying tag exists on remote..."; \
 	if [ "$$TAG_NEEDS_PUSH" = "true" ]; then \
 		echo "  ⚠ Tag not pushed, will use --target flag"; \
@@ -963,13 +1027,14 @@ github-release-build:
 			echo "  [VERBOSE] Release files count: $$(echo $$RELEASE_FILES | wc -w)"; \
 			echo "  [VERBOSE] Release files:"; \
 			for f in $$RELEASE_FILES; do echo "    - $$f"; done; \
-			echo "  [VERBOSE] Running: gh release create \"$$VERSION\" --title \"Release $$VERSION\" --notes-file $(RELEASE_DIR)/notes.md --target \"$$CURRENT_COMMIT\" $$RELEASE_FILES --prerelease=$$IS_PRERELEASE --latest"; \
+			echo "  [VERBOSE] Running: gh release create \"$$VERSION\" --title \"Release $$VERSION\" --notes-file $(RELEASE_DIR)/notes.md --target \"$$CURRENT_COMMIT\" $$RELEASE_FILES $(RELEASE_DIR)/manifest.json --prerelease=$$IS_PRERELEASE --latest"; \
 		fi; \
 		RELEASE_OUTPUT=$$(gh release create "$$VERSION" \
 			--title "Release $$VERSION" \
 			--notes-file $(RELEASE_DIR)/notes.md \
 			--target "$$CURRENT_COMMIT" \
 			$$RELEASE_FILES \
+			$(RELEASE_DIR)/manifest.json \
 			--prerelease=$$IS_PRERELEASE \
 			--latest 2>&1); \
 		RELEASE_CODE=$$?; \
@@ -996,12 +1061,13 @@ github-release-build:
 			echo "  [VERBOSE] Release files count: $$(echo $$RELEASE_FILES | wc -w)"; \
 			echo "  [VERBOSE] Release files:"; \
 			for f in $$RELEASE_FILES; do echo "    - $$f"; done; \
-			echo "  [VERBOSE] Running: gh release create \"$$VERSION\" --title \"Release $$VERSION\" --notes-file $(RELEASE_DIR)/notes.md $$RELEASE_FILES --prerelease=$$IS_PRERELEASE --latest"; \
+			echo "  [VERBOSE] Running: gh release create \"$$VERSION\" --title \"Release $$VERSION\" --notes-file $(RELEASE_DIR)/notes.md $$RELEASE_FILES $(RELEASE_DIR)/manifest.json --prerelease=$$IS_PRERELEASE --latest"; \
 		fi; \
 		RELEASE_OUTPUT=$$(gh release create "$$VERSION" \
 			--title "Release $$VERSION" \
 			--notes-file $(RELEASE_DIR)/notes.md \
 			$$RELEASE_FILES \
+			$(RELEASE_DIR)/manifest.json \
 			--prerelease=$$IS_PRERELEASE \
 			--latest 2>&1); \
 		RELEASE_CODE=$$?; \
