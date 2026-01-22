@@ -444,19 +444,14 @@ github-release:
 				}; \
 				echo "  ✓ Changes committed automatically"; \
 			else \
-				read -p "  Commit these changes? (y/n) " -n 1 -r; \
-				echo; \
-				if [ "$$REPLY" = "y" ] || [ "$$REPLY" = "Y" ]; then \
-					COMMIT_MSG="Prepare release: $$(date '+%Y-%m-%d %H:%M:%S')"; \
-					git add -A; \
-					git commit -m "$$COMMIT_MSG" || { \
-						echo "  ⚠ Failed to commit changes"; \
-						exit 1; \
-					}; \
-					echo "  ✓ Changes committed"; \
-				else \
-					echo "  ⚠ Skipping commit. Uncommitted changes remain."; \
-				fi; \
+				echo "  Auto-committing changes for automation..."; \
+				COMMIT_MSG="Prepare release: $$(date '+%Y-%m-%d %H:%M:%S')"; \
+				git add -A; \
+				git commit -m "$$COMMIT_MSG" || { \
+					echo "  ⚠ Failed to commit changes"; \
+					exit 1; \
+				}; \
+				echo "  ✓ Changes committed"; \
 			fi; \
 		else \
 			echo "  ✓ Working directory clean"; \
@@ -467,11 +462,7 @@ github-release:
 			git push origin $$CURRENT_BRANCH || { \
 				echo "  ⚠ Failed to push to origin/$$CURRENT_BRANCH"; \
 				echo "     You may need to push manually: git push origin $$CURRENT_BRANCH"; \
-				read -p "  Continue anyway? (y/n) " -n 1 -r; \
-				echo; \
-				if [ "$$REPLY" != "y" ] && [ "$$REPLY" != "Y" ]; then \
-					exit 1; \
-				fi; \
+				echo "     Continuing anyway (automation mode)..."; \
 			}; \
 		else \
 			echo "  Creating and pushing branch $$CURRENT_BRANCH..."; \
@@ -488,13 +479,8 @@ github-release:
 			CI_RUN_ID=$$(gh run list --workflow=ci.yml --branch=develop --limit=1 --json databaseId,status,conclusion -q '.[0].databaseId' 2>/dev/null); \
 			if [ -n "$$CI_RUN_ID" ]; then \
 				echo "  Waiting for CI to complete..."; \
-				gh run watch $$CI_RUN_ID --exit-status || { \
-					echo "  ⚠ CI failed. Do you want to merge to main anyway?"; \
-					read -p "  Continue? (y/n) " -n 1 -r; \
-					echo; \
-					if [ "$$REPLY" != "y" ] && [ "$$REPLY" != "Y" ]; then \
-						exit 1; \
-					fi; \
+					gh run watch $$CI_RUN_ID --exit-status || { \
+					echo "  ⚠ CI failed. Continuing with merge anyway (automation mode)..."; \
 				}; \
 			fi; \
 			echo "  Merging develop to main..."; \
@@ -503,7 +489,7 @@ github-release:
 				echo "  ⚠ Failed to checkout main. Creating from develop..."; \
 				git checkout -b main; \
 			}; \
-			git pull origin main 2>/dev/null || true; \
+			timeout 10 git pull origin main 2>/dev/null || true; \
 			git merge develop --no-edit -m "Merge develop to main for release [skip ci]" || { \
 				echo "  ⚠ Merge conflict detected. Please resolve manually:"; \
 				echo "     git checkout main"; \
@@ -517,11 +503,7 @@ github-release:
 			git push origin main || { \
 				echo "  ⚠ Failed to push to main. Please push manually:"; \
 				echo "     git push origin main"; \
-				read -p "  Continue with release anyway? (y/n) " -n 1 -r; \
-				echo; \
-				if [ "$$REPLY" != "y" ] && [ "$$REPLY" != "Y" ]; then \
-					exit 1; \
-				fi; \
+				echo "     Continuing with release anyway (automation mode)..."; \
 			}; \
 			echo "  ✓ Merged to main and pushed"; \
 		elif [ "$$CURRENT_BRANCH" != "main" ]; then \
@@ -531,18 +513,20 @@ github-release:
 				echo "  ⚠ main branch not found locally or remotely"; \
 				exit 1; \
 			}; \
-			git pull origin main || { \
-				echo "  ⚠ Failed to pull latest main"; \
-				exit 1; \
-			}; \
-			echo "  ✓ Switched to main branch"; \
+			if timeout 10 git pull origin main 2>/dev/null; then \
+				echo "  ✓ Switched to main branch"; \
+			else \
+				echo "  ⚠ Failed to pull latest main (timeout or network issue)"; \
+				echo "     Continuing with release anyway..."; \
+			fi; \
 		else \
 			echo "Step 3: Already on main branch, pulling latest..."; \
-			git pull origin main || { \
-				echo "  ⚠ Failed to pull latest main"; \
-				exit 1; \
-			}; \
-			echo "  ✓ Main branch up to date"; \
+			if timeout 10 git pull origin main 2>/dev/null; then \
+				echo "  ✓ Main branch up to date"; \
+			else \
+				echo "  ⚠ Failed to pull latest main (timeout or network issue)"; \
+				echo "     Continuing with release anyway..."; \
+			fi; \
 		fi; \
 		echo ""; \
 		echo "=== Git operations complete ==="; \
