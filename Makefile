@@ -141,7 +141,7 @@ $(VERSION_STAMP): $(VERSION_FILE) | $(BUILD_DIR)
 .DEFAULT_GOAL := all
 all: src/version.h $(PROGS:%=$(PROG_DIR)/%$(TARGET_EXT))
 
-.PHONY: all clean distclean help test release release-docker release-linux-amd64 release-linux-arm64 release-windows-x86_64 release-macos-x86_64 release-macos-arm64 release-macos github-release github-release-build
+.PHONY: all clean distclean help test release release-docker release-linux-amd64 release-linux-arm64 release-windows-x86_64 release-macos-x86_64 release-macos-arm64 release-macos github-release github-release-build fix
 
 help:
 	@echo "$(PROJECT_NAME) - $(PROJECT_DESCRIPTION)"
@@ -162,6 +162,7 @@ help:
 	@echo "  release-macos-x86_64 - Build macOS Intel binary using Docker"
 	@echo "  release-macos-arm64  - Build macOS Apple Silicon binary using Docker"
 	@echo "  github-release       - Build and create GitHub release (requires gh CLI)"
+	@echo "  fix                  - Fix common Git issues (tag conflicts, etc.)"
 	@echo "  help                 - Show this help message"
 	@echo ""
 	@echo "Build output: $(PROG_DIR)/"
@@ -176,6 +177,82 @@ else
 test:
 	@echo "No test target configured. Set TEST_TARGET variable to define tests."
 endif
+
+# Fix common Git issues (tag conflicts, etc.)
+fix:
+	@echo ""; \
+	echo "=== Fixing Git Issues ==="; \
+	echo ""; \
+	if [ ! -d .git ]; then \
+		echo "  ✗ Not a git repository"; \
+		exit 1; \
+	fi; \
+	echo "Step 1: Checking for tag conflicts..."; \
+	echo "  Fetching tags from remote (this may take a moment)..."; \
+	FETCH_OUTPUT=$$(timeout 30 git fetch --tags origin 2>&1); \
+	FETCH_CODE=$$?; \
+	if [ $$FETCH_CODE -eq 124 ]; then \
+		echo "  ⚠ Git fetch timed out after 30 seconds"; \
+		echo "     This may indicate network issues or a large number of tags"; \
+		echo "     Attempting to continue with existing tag information..."; \
+		FETCH_OUTPUT=""; \
+	elif [ $$FETCH_CODE -ne 0 ] && [ $$FETCH_CODE -ne 1 ]; then \
+		echo "  ⚠ Git fetch failed (exit code: $$FETCH_CODE)"; \
+		echo "     Continuing anyway..."; \
+	fi; \
+	if echo "$$FETCH_OUTPUT" | grep -qE '! \[rejected\]'; then \
+		echo "  Found tag conflicts:"; \
+		echo "$$FETCH_OUTPUT" | grep -E '! \[rejected\]' | sed 's/^/    /'; \
+		echo ""; \
+		echo "  Extracting conflicting tag names..."; \
+		CONFLICTING_TAGS=$$(echo "$$FETCH_OUTPUT" | grep -E '! \[rejected\]' | sed -E 's/.*\[rejected\]\s+[^ ]+\s+->\s+([^ ]+).*/\1/' | sort -u); \
+		CONFLICT_COUNT=0; \
+		for tag in $$CONFLICTING_TAGS; do \
+			if [ -n "$$tag" ] && git rev-parse "$$tag" >/dev/null 2>&1; then \
+				TAG_COMMIT_LOCAL=$$(git rev-parse "$$tag" 2>/dev/null); \
+				TAG_COMMIT_REMOTE=$$(git ls-remote --tags origin "refs/tags/$$tag" 2>/dev/null | cut -f1); \
+				if [ -n "$$TAG_COMMIT_LOCAL" ] && [ -n "$$TAG_COMMIT_REMOTE" ] && [ "$$TAG_COMMIT_LOCAL" != "$$TAG_COMMIT_REMOTE" ]; then \
+					echo "    Deleting local tag $$tag"; \
+					echo "      Local:  $$(echo $$TAG_COMMIT_LOCAL | cut -c1-7)"; \
+					echo "      Remote: $$(echo $$TAG_COMMIT_REMOTE | cut -c1-7)"; \
+					git tag -d "$$tag" 2>/dev/null || true; \
+					CONFLICT_COUNT=$$((CONFLICT_COUNT + 1)); \
+				fi; \
+			fi; \
+		done; \
+		if [ $$CONFLICT_COUNT -gt 0 ]; then \
+			echo "  ✓ Deleted $$CONFLICT_COUNT conflicting local tag(s)"; \
+		fi; \
+	else \
+		echo "  ✓ No tag conflicts detected"; \
+	fi; \
+	echo ""; \
+	echo "Step 2: Force-fetching tags from remote..."; \
+	if timeout 30 git fetch --tags --force origin >/dev/null 2>&1; then \
+		echo "  ✓ Tags synced with remote"; \
+	else \
+		FETCH_CODE=$$?; \
+		if [ $$FETCH_CODE -eq 124 ]; then \
+			echo "  ⚠ Force-fetch timed out after 30 seconds"; \
+			echo "     Tags may not be fully synced. You may need to run this again."; \
+		else \
+			echo "  ⚠ Force-fetch failed (exit code: $$FETCH_CODE)"; \
+			echo "     Tags may not be fully synced."; \
+		fi; \
+	fi; \
+	echo ""; \
+	echo "Step 3: Verifying repository state..."; \
+	if [ -n "$$(git status --porcelain 2>/dev/null)" ]; then \
+		echo "  ℹ Working directory has uncommitted changes"; \
+		git status --short | sed 's/^/    /'; \
+	else \
+		echo "  ✓ Working directory is clean"; \
+	fi; \
+	CURRENT_BRANCH=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown"); \
+	echo "  Current branch: $$CURRENT_BRANCH"; \
+	echo ""; \
+	echo "=== Fix complete ==="; \
+	echo ""
 
 # Rule template for building programs
 define PROG_template
