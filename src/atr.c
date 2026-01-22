@@ -185,3 +185,4 @@ const uint8_t *atr_data(const struct atr_image *atr, unsigned sector)
     else
         return atr->data + (sector - 1) * atr->sec_size;
 }
+// Test comment for release workflow

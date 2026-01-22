@@ -758,6 +758,7 @@ github-release-build:
 		TAG_EXISTS_REMOTE="no"; \
 	fi; \
 	CURRENT_COMMIT=$$(git rev-parse HEAD); \
+	TAG_PUSHED="false"; \
 	if [ "$$TAG_EXISTS_LOCAL" = "yes" ]; then \
 		TAG_COMMIT=$$(git rev-parse "$$VERSION" 2>/dev/null); \
 		if [ "$$TAG_COMMIT" != "$$CURRENT_COMMIT" ]; then \
@@ -777,25 +778,35 @@ github-release-build:
 		}; \
 		echo "  ✓ Tag created locally"; \
 	fi; \
+	TAG_PUSHED=false; \
 	if [ "$$TAG_EXISTS_REMOTE" = "no" ]; then \
 		echo "  Pushing tag to remote (timeout: 60s)..."; \
 		if timeout 60 git push origin "$$VERSION" 2>&1; then \
 			echo "  ✓ Tag pushed to remote"; \
+			TAG_PUSHED=true; \
+			# Verify tag was actually pushed \
+			sleep 2; \
+			if timeout 10 git ls-remote --tags origin "$$VERSION" >/dev/null 2>&1; then \
+				echo "  ✓ Tag verified on remote"; \
+			else \
+				echo "  ⚠ Warning: Tag push succeeded but verification failed"; \
+				echo "     Will use --target flag for release creation"; \
+				TAG_PUSHED=false; \
+			fi; \
 		else \
 			PUSH_CODE=$$?; \
 			if [ $$PUSH_CODE -eq 124 ]; then \
-				echo "  ✗ Push timed out after 60 seconds"; \
-				echo "     Please push manually: git push origin $$VERSION"; \
+				echo "  ⚠ Push timed out after 60 seconds"; \
+				echo "     Will use --target flag for release creation"; \
 			else \
-				echo "  ✗ Failed to push tag to remote (exit code: $$PUSH_CODE)"; \
-				echo "     Tag exists locally but not on remote."; \
-				echo "     Please push manually: git push origin $$VERSION"; \
-				echo "     Or delete local tag and retry: git tag -d $$VERSION"; \
+				echo "  ⚠ Failed to push tag to remote (exit code: $$PUSH_CODE)"; \
+				echo "     Will use --target flag for release creation"; \
 			fi; \
-			exit 1; \
+			TAG_PUSHED=false; \
 		fi; \
 	elif [ "$$TAG_EXISTS_LOCAL" = "yes" ]; then \
 		echo "  ✓ Tag $$VERSION already exists on remote"; \
+		TAG_PUSHED=true; \
 	fi; \
 	echo ""; \
 	echo "Collecting release files..."; \
@@ -853,25 +864,48 @@ github-release-build:
 	fi; \
 	echo ""; \
 	echo "Uploading release files..."; \
-	gh release create "$$VERSION" \
-		--title "Release $$VERSION" \
-		--notes-file $(RELEASE_DIR)/notes.md \
-		$$RELEASE_FILES \
-		--prerelease=$$IS_PRERELEASE \
-		--latest || { \
-		echo ""; \
-		echo "  ✗ Failed to create release."; \
-		echo "     Common issues:"; \
-		echo "     - Release with tag $$VERSION already exists"; \
-		echo "     - Tag $$VERSION doesn't exist (should have been created above)"; \
-		echo "     - Insufficient permissions"; \
-		echo ""; \
-		echo "     Solutions:"; \
-		echo "     - Delete existing release: gh release delete $$VERSION"; \
-		echo "     - Use a different version: make github-release VERSION=v1.2.3"; \
-		echo "     - Check permissions: gh auth status"; \
-		exit 1; \
-	}; \
+	if [ "$$TAG_PUSHED" = "false" ]; then \
+		echo "  Using --target flag (tag may not be on remote yet)..."; \
+		gh release create "$$VERSION" \
+			--title "Release $$VERSION" \
+			--notes-file $(RELEASE_DIR)/notes.md \
+			--target "$$CURRENT_COMMIT" \
+			$$RELEASE_FILES \
+			--prerelease=$$IS_PRERELEASE \
+			--latest || { \
+			echo ""; \
+			echo "  ✗ Failed to create release with --target flag."; \
+			echo "     Common issues:"; \
+			echo "     - Release with tag $$VERSION already exists"; \
+			echo "     - Insufficient permissions"; \
+			echo ""; \
+			echo "     Solutions:"; \
+			echo "     - Delete existing release: gh release delete $$VERSION"; \
+			echo "     - Use a different version: make github-release VERSION=v1.2.3"; \
+			echo "     - Check permissions: gh auth status"; \
+			exit 1; \
+		}; \
+	else \
+		gh release create "$$VERSION" \
+			--title "Release $$VERSION" \
+			--notes-file $(RELEASE_DIR)/notes.md \
+			$$RELEASE_FILES \
+			--prerelease=$$IS_PRERELEASE \
+			--latest || { \
+			echo ""; \
+			echo "  ✗ Failed to create release."; \
+			echo "     Common issues:"; \
+			echo "     - Release with tag $$VERSION already exists"; \
+			echo "     - Tag $$VERSION doesn't exist (should have been created above)"; \
+			echo "     - Insufficient permissions"; \
+			echo ""; \
+			echo "     Solutions:"; \
+			echo "     - Delete existing release: gh release delete $$VERSION"; \
+			echo "     - Use a different version: make github-release VERSION=v1.2.3"; \
+			echo "     - Check permissions: gh auth status"; \
+			exit 1; \
+		}; \
+	fi; \
 	echo ""; \
 	echo "  ✓ GitHub release created successfully!"; \
 	REPO=$$(gh repo view --json owner,name -q '.owner.login + "/" + .name' 2>/dev/null); \
