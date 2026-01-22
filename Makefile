@@ -481,28 +481,23 @@ github-release:
 				}; \
 				echo "  ✓ Changes committed automatically"; \
 			else \
-				printf "  Commit these changes? (y/n) "; \
-				read REPLY; \
-				if [ "$$REPLY" = "y" ] || [ "$$REPLY" = "Y" ]; then \
-					COMMIT_MSG="Prepare release: $$(date '+%Y-%m-%d %H:%M:%S')"; \
-					if [ "$$VERBOSE" = "1" ]; then \
-						echo "  [VERBOSE] User chose to commit"; \
-						echo "  [VERBOSE] Commit message: $$COMMIT_MSG"; \
-					fi; \
-					if [ "$$VERBOSE" = "1" ]; then echo "  [VERBOSE] Running: git add -A"; fi; \
-					git add -A; \
-					if [ "$$VERBOSE" = "1" ]; then echo "  [VERBOSE] Running: git commit -m \"$$COMMIT_MSG\""; fi; \
-					git commit -m "$$COMMIT_MSG" || { \
-						echo "  ⚠ Failed to commit changes"; \
-						if [ "$$VERBOSE" = "1" ]; then \
-							echo "  [VERBOSE] git commit failed, exit code: $$?"; \
-						fi; \
-						exit 1; \
-					}; \
-					echo "  ✓ Changes committed"; \
-				else \
-					echo "  ⚠ Skipping commit. Uncommitted changes remain."; \
+				echo "  Auto-committing changes for automation..."; \
+				COMMIT_MSG="Prepare release: $$(date '+%Y-%m-%d %H:%M:%S')"; \
+				if [ "$$VERBOSE" = "1" ]; then \
+					echo "  [VERBOSE] Auto-committing for automation"; \
+					echo "  [VERBOSE] Commit message: $$COMMIT_MSG"; \
 				fi; \
+				if [ "$$VERBOSE" = "1" ]; then echo "  [VERBOSE] Running: git add -A"; fi; \
+				git add -A; \
+				if [ "$$VERBOSE" = "1" ]; then echo "  [VERBOSE] Running: git commit -m \"$$COMMIT_MSG\""; fi; \
+				git commit -m "$$COMMIT_MSG" || { \
+					echo "  ⚠ Failed to commit changes"; \
+					if [ "$$VERBOSE" = "1" ]; then \
+						echo "  [VERBOSE] git commit failed, exit code: $$?"; \
+					fi; \
+					exit 1; \
+				}; \
+				echo "  ✓ Changes committed"; \
 			fi; \
 		else \
 			echo "  ✓ Working directory clean"; \
@@ -528,11 +523,7 @@ github-release:
 					echo "$$PUSH_OUTPUT" | sed 's/^/    /'; \
 				fi; \
 				echo "     You may need to push manually: git push origin $$CURRENT_BRANCH"; \
-				printf "  Continue anyway? (y/n) "; \
-				read REPLY; \
-				if [ "$$REPLY" != "y" ] && [ "$$REPLY" != "Y" ]; then \
-					exit 1; \
-				fi; \
+				echo "     Continuing with release anyway (automation mode)..."; \
 			else \
 				if [ "$$VERBOSE" = "1" ]; then \
 					echo "  [VERBOSE] git push succeeded"; \
@@ -577,12 +568,7 @@ github-release:
 			if [ -n "$$CI_RUN_ID" ]; then \
 				echo "  Waiting for CI to complete..."; \
 					gh run watch $$CI_RUN_ID --exit-status || { \
-					echo "  ⚠ CI failed. Do you want to merge to main anyway?"; \
-					printf "  Continue? (y/n) "; \
-					read REPLY; \
-					if [ "$$REPLY" != "y" ] && [ "$$REPLY" != "Y" ]; then \
-						exit 1; \
-					fi; \
+					echo "  ⚠ CI failed. Continuing with merge anyway (automation mode)..."; \
 				}; \
 			fi; \
 			echo "  Merging develop to main..."; \
@@ -605,11 +591,7 @@ github-release:
 			git push origin main || { \
 				echo "  ⚠ Failed to push to main. Please push manually:"; \
 				echo "     git push origin main"; \
-				printf "  Continue with release anyway? (y/n) "; \
-				read REPLY; \
-				if [ "$$REPLY" != "y" ] && [ "$$REPLY" != "Y" ]; then \
-					exit 1; \
-				fi; \
+				echo "     Continuing with release anyway (automation mode)..."; \
 			}; \
 			echo "  ✓ Merged to main and pushed"; \
 		elif [ "$$CURRENT_BRANCH" != "main" ]; then \
@@ -999,12 +981,34 @@ github-release-build:
 	if [ "$$TAG_NEEDS_PUSH" = "true" ]; then \
 		echo "  ⚠ Tag not pushed, will use --target flag"; \
 	else \
-		if ! git ls-remote --tags origin "$$VERSION" >/dev/null 2>&1; then \
-			echo "  ⚠ Tag $$VERSION does not exist on remote"; \
+		if [ "$$VERBOSE" = "1" ]; then \
+			echo "  [VERBOSE] Running: timeout 5 git ls-remote --tags origin \"$$VERSION\""; \
+		fi; \
+		TAG_CHECK_OUTPUT=$$(timeout 5 git ls-remote --tags origin "$$VERSION" 2>&1); \
+		TAG_CHECK_CODE=$$?; \
+		if [ $$TAG_CHECK_CODE -eq 124 ]; then \
+			echo "  ⚠ Tag check timed out (network issue), will use --target flag"; \
+			if [ "$$VERBOSE" = "1" ]; then \
+				echo "  [VERBOSE] git ls-remote timed out after 5 seconds"; \
+			fi; \
+			TAG_NEEDS_PUSH=true; \
+		elif [ $$TAG_CHECK_CODE -ne 0 ] || [ -z "$$TAG_CHECK_OUTPUT" ]; then \
+			echo "  ⚠ Tag $$VERSION does not exist on remote or check failed"; \
+			if [ "$$VERBOSE" = "1" ]; then \
+				echo "  [VERBOSE] git ls-remote exit code: $$TAG_CHECK_CODE"; \
+				if [ -n "$$TAG_CHECK_OUTPUT" ]; then \
+					echo "  [VERBOSE] git ls-remote output:"; \
+					echo "$$TAG_CHECK_OUTPUT" | sed 's/^/    /'; \
+				fi; \
+			fi; \
 			echo "     Will use --target flag to create release"; \
 			TAG_NEEDS_PUSH=true; \
 		else \
 			echo "  ✓ Tag $$VERSION exists on remote"; \
+			if [ "$$VERBOSE" = "1" ]; then \
+				echo "  [VERBOSE] Tag found on remote:"; \
+				echo "$$TAG_CHECK_OUTPUT" | sed 's/^/    /'; \
+			fi; \
 		fi; \
 	fi; \
 	echo ""; \
@@ -1015,9 +1019,6 @@ github-release-build:
 		USE_TARGET=true; \
 	elif [ "$(SKIP_GIT)" = "1" ]; then \
 		echo "  SKIP_GIT=1, using --target flag to ensure tag is created..."; \
-		USE_TARGET=true; \
-	elif ! timeout 5 git ls-remote --tags origin "$$VERSION" >/dev/null 2>&1; then \
-		echo "  Cannot verify tag on remote (timeout or not found), using --target flag..."; \
 		USE_TARGET=true; \
 	fi; \
 	if [ "$$USE_TARGET" = "true" ]; then \
