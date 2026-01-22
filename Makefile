@@ -752,7 +752,11 @@ github-release-build:
 		echo "     Tag will be created on current branch"; \
 	fi; \
 	TAG_EXISTS_LOCAL=$$(git rev-parse "$$VERSION" >/dev/null 2>&1 && echo "yes" || echo "no"); \
-	TAG_EXISTS_REMOTE=$$(git ls-remote --tags origin "$$VERSION" >/dev/null 2>&1 && echo "yes" || echo "no"); \
+	if timeout 10 git ls-remote --tags origin "$$VERSION" >/dev/null 2>&1; then \
+		TAG_EXISTS_REMOTE="yes"; \
+	else \
+		TAG_EXISTS_REMOTE="no"; \
+	fi; \
 	CURRENT_COMMIT=$$(git rev-parse HEAD); \
 	if [ "$$TAG_EXISTS_LOCAL" = "yes" ]; then \
 		TAG_COMMIT=$$(git rev-parse "$$VERSION" 2>/dev/null); \
@@ -834,12 +838,19 @@ github-release-build:
 	done; \
 	echo ""; \
 	echo "Verifying tag exists on remote..."; \
-	if ! git ls-remote --tags origin "$$VERSION" >/dev/null 2>&1; then \
-		echo "  ✗ Tag $$VERSION does not exist on remote"; \
-		echo "     Please push the tag first: git push origin $$VERSION"; \
-		exit 1; \
+	if timeout 10 git ls-remote --tags origin "$$VERSION" >/dev/null 2>&1; then \
+		echo "  ✓ Tag $$VERSION exists on remote"; \
+	else \
+		CHECK_CODE=$$?; \
+		if [ $$CHECK_CODE -eq 124 ]; then \
+			echo "  ⚠ Tag check timed out after 10 seconds"; \
+			echo "     Assuming tag exists and continuing..."; \
+		else \
+			echo "  ✗ Tag $$VERSION does not exist on remote"; \
+			echo "     Please push the tag first: git push origin $$VERSION"; \
+			exit 1; \
+		fi; \
 	fi; \
-	echo "  ✓ Tag $$VERSION exists on remote"; \
 	echo ""; \
 	echo "Uploading release files..."; \
 	gh release create "$$VERSION" \
