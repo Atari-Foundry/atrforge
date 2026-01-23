@@ -96,7 +96,6 @@ SOURCES_atrcp = \
 # Version handling
 VERSION_FILE = VERSION
 VERSION = $(shell cat $(VERSION_FILE) 2>/dev/null || echo "1.0.0")
-VERSION_STAMP = $(BUILD_DIR)/.version-incremented
 
 # Docker image for macOS builds (optional)
 # Use existing Docker image if available
@@ -113,35 +112,26 @@ BDIR = $(BUILD_DIR)
 ODIR = $(BDIR)
 
 # Generate version.h from VERSION file
-src/version.h: $(VERSION_FILE) | $(VERSION_STAMP)
+src/version.h: $(VERSION_FILE)
 	@echo "#pragma once" > $@
-	@echo "const char *prog_version = \"$(shell cat $(VERSION_FILE))\";" >> $@
+	@echo "const char *prog_version = \"$(shell cat $(VERSION_FILE) 2>/dev/null || echo '1.0.0')\";" >> $@
 
-$(VERSION_STAMP): $(VERSION_FILE) | $(BUILD_DIR)
+# Increment version (only called explicitly for releases)
+increment-version:
 	@if [ -f $(VERSION_FILE) ]; then \
-		SKIP_TARGETS="help clean distclean"; \
-		SKIP=0; \
-		for target in $$SKIP_TARGETS; do \
-			if echo "$(MAKECMDGOALS)" | grep -q "$$target"; then \
-				SKIP=1; \
-				break; \
-			fi; \
-		done; \
-		if [ $$SKIP -eq 0 ]; then \
-			if [ -z "$(SKIP_VERSION_INCREMENT)" ] && [ ! -f $(VERSION_STAMP) ]; then \
-				awk -F'.' 'BEGIN{OFS="."} NF==3 {$$3=$$3+1; print $$1"."$$2"."$$3; next} {print}' $(VERSION_FILE) > $(VERSION_FILE).tmp && \
-				mv -f $(VERSION_FILE).tmp $(VERSION_FILE) && \
-				echo "Version incremented"; \
-			fi; \
-		fi; \
+		awk -F'.' 'BEGIN{OFS="."} NF==3 {$$3=$$3+1; print $$1"."$$2"."$$3; next} {print}' $(VERSION_FILE) > $(VERSION_FILE).tmp && \
+		mv -f $(VERSION_FILE).tmp $(VERSION_FILE) && \
+		echo "Version incremented to $$(cat $(VERSION_FILE))"; \
+	else \
+		echo "Error: $(VERSION_FILE) not found"; \
+		exit 1; \
 	fi
-	@touch $@
 
 # Default rule
 .DEFAULT_GOAL := all
 all: src/version.h $(PROGS:%=$(PROG_DIR)/%$(TARGET_EXT))
 
-.PHONY: all clean distclean help test release release-docker release-linux-amd64 release-linux-arm64 release-windows-x86_64 release-macos-x86_64 release-macos-arm64 release-macos github-release github-release-build fix
+.PHONY: all clean distclean help test release release-docker release-linux-amd64 release-linux-arm64 release-windows-x86_64 release-macos-x86_64 release-macos-arm64 release-macos github-release github-release-build increment-version fix
 
 help:
 	@echo "$(PROJECT_NAME) - $(PROJECT_DESCRIPTION)"
@@ -273,7 +263,7 @@ $(foreach prog,$(PROGS),$(eval $(call PROG_template,$(prog))))
 DEPS = $(OBJS:%.o=%.d)
 
 clean:
-	-rm -f $(OBJS) $(DEPS) $(VERSION_STAMP)
+	-rm -f $(OBJS) $(DEPS)
 	-rmdir $(BUILD_DIR) 2>/dev/null || true
 	-rm -f $(PROGS:%=$(PROG_DIR)/%)
 	-rmdir $(PROG_DIR) 2>/dev/null || true
@@ -316,7 +306,7 @@ endif
 # ============================================================================
 
 # Release builds for all platforms
-release: $(VERSION_STAMP)
+release:
 	@$(MAKE) release-linux-amd64 release-linux-arm64 release-windows-x86_64 release-macos
 	@echo ""
 	@echo "Release builds completed:"
@@ -341,13 +331,12 @@ define BUILD_ALL_PROGS
 			ODIR=$(3) \
 			PROG_DIR=$(3)/bin \
 			BUILD_DIR=$(3) \
-			SKIP_VERSION_INCREMENT=1 \
 			$(3)/bin/$$prog$$EXT || exit 1; \
 	done
 endef
 
 # Linux amd64 build (native)
-release-linux-amd64: $(VERSION_STAMP)
+release-linux-amd64:
 	@mkdir -p $(RELEASE_DIR)
 	@echo "Building Linux amd64..."
 	@rm -rf $(BDIR)-linux-amd64
@@ -361,7 +350,7 @@ release-linux-amd64: $(VERSION_STAMP)
 	@echo "  ✓ Linux amd64 builds complete"
 
 # Linux arm64 build (cross-compile)
-release-linux-arm64: $(VERSION_STAMP)
+release-linux-arm64:
 	@mkdir -p $(RELEASE_DIR)
 	@echo "Building Linux arm64..."
 	@if ! command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then \
@@ -386,7 +375,7 @@ release-linux-arm64: $(VERSION_STAMP)
 	@echo "  ✓ Linux arm64 builds complete"
 
 # Windows x86_64 build (cross-compile with MinGW)
-release-windows-x86_64: $(VERSION_STAMP)
+release-windows-x86_64:
 	@mkdir -p $(RELEASE_DIR)
 	@echo "Building Windows x86_64..."
 	@if ! command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1; then \
@@ -410,7 +399,7 @@ release-windows-x86_64: $(VERSION_STAMP)
 	@echo "  ✓ Windows x86_64 builds complete"
 
 # macOS Intel build (requires Docker)
-release-macos-x86_64: $(VERSION_STAMP)
+release-macos-x86_64:
 	@if [ -z "$(DOCKER_IMAGE)" ]; then \
 		echo "  ✗ DOCKER_IMAGE not configured. Set DOCKER_IMAGE variable."; \
 		exit 1; \
@@ -439,7 +428,6 @@ release-macos-x86_64: $(VERSION_STAMP)
 					ODIR=build-macos-x86_64 \
 					PROG_DIR=build-macos-x86_64/bin \
 					BUILD_DIR=build-macos-x86_64 \
-					SKIP_VERSION_INCREMENT=1 \
 					build-macos-x86_64/bin/\$$prog && \
 				cp build-macos-x86_64/bin/\$$prog release/\$$prog-\$$VERSION_NUM-macos-x86_64 && \
 				chmod +x release/\$$prog-\$$VERSION_NUM-macos-x86_64; \
@@ -448,7 +436,7 @@ release-macos-x86_64: $(VERSION_STAMP)
 		" || echo "  ⚠ macOS Intel builds may have failed. Check Docker output above."
 
 # macOS Apple Silicon build (requires Docker)
-release-macos-arm64: $(VERSION_STAMP)
+release-macos-arm64:
 	@if [ -z "$(DOCKER_IMAGE)" ]; then \
 		echo "  ✗ DOCKER_IMAGE not configured. Set DOCKER_IMAGE variable."; \
 		exit 1; \
@@ -477,7 +465,6 @@ release-macos-arm64: $(VERSION_STAMP)
 					ODIR=build-macos-arm64 \
 					PROG_DIR=build-macos-arm64/bin \
 					BUILD_DIR=build-macos-arm64 \
-					SKIP_VERSION_INCREMENT=1 \
 					build-macos-arm64/bin/\$$prog && \
 				cp build-macos-arm64/bin/\$$prog release/\$$prog-\$$VERSION_NUM-macos-arm64 && \
 				chmod +x release/\$$prog-\$$VERSION_NUM-macos-arm64; \
@@ -633,6 +620,9 @@ github-release:
 # Internal target: Build and create GitHub release
 github-release-build:
 	@echo ""; \
+	echo "=== Incrementing version ==="; \
+	$(MAKE) increment-version; \
+	echo ""; \
 	echo "=== Cleaning release directory ==="; \
 	rm -rf $(RELEASE_DIR)/*-*; \
 	rm -f $(RELEASE_DIR)/notes.md; \

@@ -48,9 +48,6 @@ release/current-unreleased.md
 mkatr
 lsatr
 
-# Version stamp files
-**/.version-incremented
-
 # Docker build artifacts
 *.dockerignore
 Dockerfile.*.tmp
