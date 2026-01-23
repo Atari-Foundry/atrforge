@@ -647,6 +647,22 @@ github-release-build:
 	VERSION=$$( \
 		if [ -n "$(VERSION)" ]; then \
 			echo "$(VERSION)" | sed 's/^v*/v/'; \
+		elif [ -f "$(VERSION_FILE)" ]; then \
+			VERSION_FROM_FILE=$$(cat $(VERSION_FILE) 2>/dev/null | tr -d '[:space:]'); \
+			if [ -n "$$VERSION_FROM_FILE" ]; then \
+				echo "v$$VERSION_FROM_FILE"; \
+			else \
+				LATEST_TAG=$$(git describe --tags --abbrev=0 2>/dev/null); \
+				if [ -n "$$LATEST_TAG" ]; then \
+					MAJOR=$$(echo $$LATEST_TAG | sed 's/^v//' | cut -d. -f1); \
+					MINOR=$$(echo $$LATEST_TAG | sed 's/^v//' | cut -d. -f2); \
+					PATCH=$$(echo $$LATEST_TAG | sed 's/^v//' | cut -d. -f3); \
+					PATCH=$$((PATCH + 1)); \
+					echo "v$$MAJOR.$$MINOR.$$PATCH"; \
+				else \
+					echo "v1.0.0"; \
+				fi; \
+			fi; \
 		elif git describe --tags --exact-match >/dev/null 2>&1; then \
 			git describe --tags --exact-match; \
 		else \
@@ -664,6 +680,13 @@ github-release-build:
 	); \
 	if [ -n "$(VERSION)" ]; then \
 		echo "  Using specified version: $$VERSION"; \
+	elif [ -f "$(VERSION_FILE)" ]; then \
+		VERSION_FROM_FILE=$$(cat $(VERSION_FILE) 2>/dev/null | tr -d '[:space:]'); \
+		if [ -n "$$VERSION_FROM_FILE" ]; then \
+			echo "  Using version from VERSION file: $$VERSION"; \
+		else \
+			echo "  VERSION file empty, using: $$VERSION"; \
+		fi; \
 	elif git describe --tags --exact-match >/dev/null 2>&1; then \
 		echo "  Using current tag: $$VERSION"; \
 	else \
